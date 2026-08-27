@@ -222,6 +222,52 @@ describe('SubagentRuntime.startContinuable', () => {
     expect(ctx.agents.get(reservedId)).toBeUndefined()
   })
 
+  it('awaits the durable-owner commit before admitting the initial prompt', async () => {
+    const { ctx, parent } = await setup([textResponse('answer')])
+    const reservedId = SessionId('00000000-0000-4000-8000-000000000124')
+    const entered = Promise.withResolvers<undefined>()
+    const release = Promise.withResolvers<undefined>()
+    const order: string[] = []
+    ctx.on('agent/inbox/inserted', ({ agent }) => {
+      if (agent.id === reservedId) order.push('prompt')
+    })
+
+    const starting = ctx.subagents.startContinuable({
+      ...startSpec(parent),
+      childId: reservedId,
+      beforeInitialPrompt: async () => {
+        order.push('commit:start')
+        entered.resolve(undefined)
+        await release.promise
+        order.push('commit:end')
+      },
+    })
+    await entered.promise
+
+    expect(ctx.agents.get(reservedId)).toBeDefined()
+    expect(order).toEqual(['commit:start'])
+    release.resolve(undefined)
+
+    const started = await starting
+    expect(started.childId).toBe(reservedId)
+    expect(order).toEqual(['commit:start', 'commit:end', 'prompt'])
+    await waitNoActivation(ctx, reservedId)
+  })
+
+  it('rolls the child back when the durable-owner commit rejects', async () => {
+    const { ctx, parent } = await setup([textResponse('unused')])
+    const reservedId = SessionId('00000000-0000-4000-8000-000000000125')
+
+    await expect(ctx.subagents.startContinuable({
+      ...startSpec(parent),
+      childId: reservedId,
+      beforeInitialPrompt: () => Promise.reject(new Error('owner commit failed')),
+    })).rejects.toThrow('owner commit failed')
+
+    expect(ctx.agents.get(reservedId)).toBeUndefined()
+    expect(ctx.agents.list().map(agent => agent.id)).toEqual([SessionId('parent')])
+  })
+
   it('rejects without ids when the provider has no prepareContinuable capability', async () => {
     const { ctx, parent } = await setup([])
     const start = vi.fn(async () => { throw new Error('must not dispatch') })
@@ -2410,18 +2456,19 @@ describe('continuable errors', () => {
       request: {
         prompt: message('routed work'),
         parent,
-        agentOptions: { provider: 'mock', model: 'child-model' },
+        agentOptions: { provider: 'mock', model: 'child-model', maxTokens: 321 },
       },
     })
     await waitNoActivation(ctx, started.childId)
     const loaded = await ctx.sessionPersistence.load(started.childId)
     expect(loaded.events.find(event => event.type === 'subagent/descriptor')?.data)
-      .toMatchObject({ agentProvider: 'mock', agentModel: 'child-model' })
+      .toMatchObject({ agentProvider: 'mock', agentModel: 'child-model', agentMaxTokens: 321 })
 
     // The resumed Activation runs on the declared route, not the parent's.
     await followup(ctx, parent, started.childId, message('again'))
     await vi.waitFor(() => {
       expect(ctx.agents.get(started.childId)?.options.model).toBe('child-model')
+      expect(ctx.agents.get(started.childId)?.options.maxTokens).toBe(321)
     })
     await waitNoActivation(ctx, started.childId)
   })

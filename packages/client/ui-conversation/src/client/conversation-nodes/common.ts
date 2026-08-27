@@ -14,6 +14,7 @@ import type {
 export const CHAT_SYNTHETIC_SEQ_OFFSETS = {
   interruptedAssistant: -0.9,
   interruptedFollowup: -0.8,
+  turnSummary: 0.04,
   maxTokensNotice: 0.05,
   finalizedFollowup: 0.1,
 } as const
@@ -44,6 +45,7 @@ export function chatNode<Kind extends ChatNodeKind>(
   options: {
     readonly location?: ConversationLocation
     readonly visibility?: 'visible' | 'hidden'
+    readonly flow?: 'activity'
   } = {},
 ): ChatNode<Kind> {
   return {
@@ -54,6 +56,7 @@ export function chatNode<Kind extends ChatNodeKind>(
     anchorSeq,
     location: options.location ?? contextLocation(context),
     visibility: options.visibility ?? 'visible',
+    ...options.flow === undefined ? {} : { flow: options.flow },
     data,
   }
 }

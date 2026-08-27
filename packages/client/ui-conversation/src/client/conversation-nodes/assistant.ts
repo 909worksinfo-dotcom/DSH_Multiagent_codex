@@ -69,6 +69,20 @@ function hasInterruptionEvidence(blocks: readonly AssistantBlock[]): boolean {
   })
 }
 
+function isReasoningOnlyActivity(blocks: readonly AssistantBlock[]): boolean {
+  let hasReasoning = false
+  for (const block of blocks) {
+    if (block.kind === 'reasoning') {
+      hasReasoning ||= block.text.trim() !== ''
+      continue
+    }
+    if (block.kind === 'tool-call') continue
+    if (block.kind === 'text' && block.text.trim() === '') continue
+    return false
+  }
+  return hasReasoning
+}
+
 function resetForRetry(state: AssistantState): AssistantState {
   return {
     ...initialState(state.turn, state.step),
@@ -305,6 +319,7 @@ export const assistantDefinition: ConversationNodeDefinition<AssistantState> = {
     }
     return chatNode(context, 'assistant-step', projected.anchorSeq, projected.data, {
       visibility: projected.settled?.interrupted === true || projected.visible ? 'visible' : 'hidden',
+      ...isReasoningOnlyActivity(projected.data.blocks) ? { flow: 'activity' as const } : {},
     })
   },
 }

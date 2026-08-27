@@ -12,6 +12,7 @@ export type {} from './conversation-nodes/retry.ts'
 export type {} from './conversation-nodes/tool.ts'
 export type {} from './conversation-nodes/turn-error.ts'
 export type {} from './conversation-nodes/turn-max-tokens.ts'
+export type {} from './conversation-nodes/turn-summary.ts'
 export type {} from './conversation-nodes/turn-tail.ts'
 
 export { apply, inject } from './apply.ts'
@@ -25,7 +26,7 @@ export type {
 export type { ConversationKey } from './locales.ts'
 export type {
   AssistantChatData, ChatNode, ChatNodeDataMap, ChatNodeKind, ManualCompactionChatData,
-  RetryChatData, ToolChatData, TurnTailChatData,
+  RetryChatData, ToolCallCount, ToolChatData, TurnSummaryChatData, TurnTailChatData,
 } from './contract/chat-nodes.ts'
 export type {
   ChatFileMentions, ChatNodeOwnerProps, ChatNodeViewProps,

@@ -1,4 +1,4 @@
-# Agent Note: 审批 seam——基于 waterfall（瀑布式事件）应答者的一次性权限决策
+# Agent Note: 审批 seam——基于 waterfall（瀑布式事件）应答者的限定范围权限决策
 
 Status: implemented
 
@@ -27,7 +27,7 @@ Status: implemented
 
 仅有这条条目只提供机制，不提供通道：没有组合应答者时，每次 ask 都解析为 `unavailable`，发起请求的工具调用会被拒绝——无需配置即可做到故障时默认拒绝。组合 ACP 应用（`@deepseek-ai/dsh-acp-demo`，如 [acp-agent 示例的默认树](../../../../examples/acp-agent/README.md)）即可闭环：其[仅面向自动化的桥接层](../simplification/2026-07-23-acp-automation-only-protocol.md)注册一个应答者，向拥有该会话的客户端发送 `session/request_permission`，携带精确的工具调用 id 和一次性 allow/reject 选项。`policy: never` 是无人值守姿态：每次 ask 都会被确定性地自动拒绝，当前值也会加入运行时上下文快照。`policy` 在插件加载时对照封闭列表校验；非法值直接抛异常。
 
-组合部署的可观测行为：`allowed-once` 仅允许该次调用继续；拒绝、关闭和通道缺失以三种不同原因拒绝，模型可以区分；轮次内成功的请求会在发起请求的 agent 的会话日志上落一对持久化的 `approval/asked`/`approval/decided` 事件；授权不会在发起请求的调用结束后继续存在。空闲时的请求或审计追加失败会拒绝，而不会返回未经审计的决策。
+组合部署的可观测行为：`allowed-once` 仅允许该次调用继续；`allowed-for-turn` 还会为同一工具和消费方定义的操作类别安装内存授权，直到当前轮次结束；拒绝、关闭和通道缺失以三种不同原因拒绝，模型可以区分。轮次内每个成功请求（包括复用轮次授权的请求）都会在发起请求的 agent 会话日志上落一对持久化的 `approval/asked`/`approval/decided` 事件。空闲时的请求或审计追加失败会拒绝，而不会返回未经审计的决策。
 
 以下是该组合下的一次 ask，取自沙箱示例录制的 `escalation-approved` 场景——模型请求沙箱升级，门禁发起 ask，自动化客户端选择 Allow once：
 
@@ -51,15 +51,15 @@ tool/result      "escalated" — this one call ran under the wider mode; the gra
 
 #### seam：机制与策略分离
 
-经过校验并成功追加 `approval/asked` 后，服务将 `approval/request` waterfall 解析为 `allowed-once`、`rejected`、`cancelled` 或 `unavailable`。服务沿用只读的请求标识和 signal，将中止视为 `cancelled`，把应答者失败和无效返回统一转换为 `unavailable`，丢弃迟到的应答，并追加配对的 `approval/decided` 事件。提交前的审计失败会拒绝；追加后的观察者失败无法撤销权威事件。`allowed-once` 仅授权所询问的操作，而 `request()` 会拒绝进行中的轮次之外的调用，以保证审计对留在持久提交边界内。
+经过校验并成功追加 `approval/asked` 后，服务将 `approval/request` waterfall 解析为 `allowed-once`、`allowed-for-turn`、`rejected`、`cancelled` 或 `unavailable`。服务沿用只读的请求标识和 signal，将中止视为 `cancelled`，把应答者失败和无效返回统一转换为 `unavailable`，丢弃迟到的应答，并追加配对的 `approval/decided` 事件。提交前的审计失败会拒绝；追加后的观察者失败无法撤销权威事件。`allowed-once` 仅授权所询问的操作。`allowed-for-turn` 存储精确 agent、当前 `turn/start`、工具名称和可选的消费方 `taskKey`；只有非空 key 可以复用，而 `never` 策略仍会在复用前拒绝。`request()` 会拒绝进行中的轮次之外的调用，以保证每个审计对留在持久提交边界内。
 
 应答者是 `approval/request` waterfall 监听器。零监听器会直接落到 `unavailable`；识别该 agent 的监听器占用先到先得的决策槽，而不识别的监听器必须调用 `next()` 委派。监听器会随其 fiber 一同 dispose（资源释放），因此卸载通道后，请求会在故障时默认被拒绝。由于兄弟插件的注册顺序不确定，部署应组合一个终端应答者，并保留 `prepend` 给「决策或委派」门禁。
 
-`ApprovalRequest` 携带发起请求的 `agent`、`toolName`、可选的精确 `callId`、人类可读的 `reason` 和可选的 `signal`。它使用 `CallId` brand 而不导入依赖本 seam 的 `dsh-tools`。通道适配器可按 `callId` 关联任何更丰富的调用状态；审批请求本身不重复携带工具参数。
+`ApprovalRequest` 携带发起请求的 `agent`、`toolName`、可选的精确 `callId`、人类可读的 `reason`、可选的稳定 `taskKey` 和可选的 `signal`。它使用 `CallId` brand 而不导入依赖本 seam 的 `dsh-tools`。通道适配器可按 `callId` 关联任何更丰富的调用状态；审批请求本身不重复携带工具参数。强制执行策略的消费方拥有 `taskKey`，因为展示文本和模型提供的理由不能作为权限标识。
 
 #### dsh-tools 中的 Ask 路由
 
-`ToolRuntime.execute()` 在派发前解析 `ask`：`allowed-once` 继续执行，而拒绝、取消和通道不可用产生三种不同的拒绝原因。机会性消费 `ctx.get('approval')`，让缺失或未挂载的服务失败关闭而不阻塞注册表 fiber。无 agent 的执行同样失败关闭，因为它既没有审计会话，也没有通道所有者。
+`ToolRuntime.execute()` 在派发前解析 `ask`：`allowed-once` 与 `allowed-for-turn` 继续执行，而拒绝、取消和通道不可用产生三种不同的拒绝原因。普通 pre-execute 请求使用工具名称加固定策略阶段 key；沙箱升权使用工具名称加对象类别和目标模式，从权限标识中排除模型提供的理由。机会性消费 `ctx.get('approval')`，让缺失或未挂载的服务失败关闭而不阻塞注册表 fiber。无 agent 的执行同样失败关闭，因为它既没有审计会话，也没有通道所有者。
 
 #### 每会话策略层
 

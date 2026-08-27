@@ -9,7 +9,8 @@
  */
 import { defineStore, type EngineStoreHandle } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  clampWidth, DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
+  clampWidth, COLLABORATION_DEFAULT, COLLABORATION_MAX, COLLABORATION_MIN,
+  DETAILS_DEFAULT, DETAILS_MAX, DETAILS_MIN,
   SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN,
 } from './columns.ts'
 
@@ -20,19 +21,31 @@ import {
  * `narrowExpanded` is the manual override that re-expands the auto-collapsed
  * sidebar over the squeezed center without rewriting the width preference.
  */
-type LayoutState = { sidebar: number; details: number; narrow: boolean; narrowExpanded: boolean }
+type LayoutState = {
+  workspace: 'conversation' | 'collaboration'
+  sidebar: number
+  details: number
+  collaboration: number
+  narrow: boolean
+  narrowExpanded: boolean
+}
 
 /**
  * Annotation twin of the actions literal below (the export needs a declared
  * return type); drift fails assignability at the defineStore call.
  */
 type LayoutActions = {
+  enterConversation: (draft: LayoutState) => void
+  enterCollaboration: (draft: LayoutState) => void
   setSidebar: (draft: LayoutState, px: number) => void
   setDetails: (draft: LayoutState, px: number) => void
+  setCollaboration: (draft: LayoutState, px: number) => void
   toggleSidebar: (draft: LayoutState) => void
   setNarrow: (draft: LayoutState, narrow: boolean) => void
   openDetails: (draft: LayoutState) => void
   closeDetails: (draft: LayoutState) => void
+  openCollaboration: (draft: LayoutState) => void
+  closeCollaboration: (draft: LayoutState) => void
 }
 
 /**
@@ -47,10 +60,33 @@ type LayoutActions = {
  */
 export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutActions>  {
   const handle = defineStore({
-    init: (): LayoutState => ({ sidebar: SIDEBAR_DEFAULT, details: 0, narrow: false, narrowExpanded: false }),
+    init: (): LayoutState => ({
+      workspace: 'conversation',
+      sidebar: SIDEBAR_DEFAULT,
+      details: 0,
+      collaboration: 0,
+      narrow: false,
+      narrowExpanded: false,
+    }),
     actions: {
+      enterConversation: (d) => {
+        d.workspace = 'conversation'
+        d.collaboration = 0
+      },
+      enterCollaboration: (d) => {
+        d.workspace = 'collaboration'
+        d.details = 0
+        d.collaboration = 0
+      },
       setSidebar: (d, px: number) => { d.sidebar = clampWidth(px, SIDEBAR_MIN, SIDEBAR_MAX) },
-      setDetails: (d, px: number) => { d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX) },
+      setDetails: (d, px: number) => {
+        d.details = clampWidth(px, DETAILS_MIN, DETAILS_MAX)
+        d.collaboration = 0
+      },
+      setCollaboration: (d, px: number) => {
+        d.collaboration = clampWidth(px, COLLABORATION_MIN, COLLABORATION_MAX)
+        d.details = 0
+      },
       // Narrow toggles flip only the override: the width preference survives
       // untouched, so re-widening restores the pre-squeeze layout.
       toggleSidebar: (d) => {
@@ -64,8 +100,16 @@ export function createLayoutStore(): EngineStoreHandle<LayoutState, LayoutAction
         d.narrow = narrow
         d.narrowExpanded = false
       },
-      openDetails: (d) => { if (d.details === 0) d.details = DETAILS_DEFAULT },
+      openDetails: (d) => {
+        d.collaboration = 0
+        if (d.details === 0) d.details = DETAILS_DEFAULT
+      },
       closeDetails: (d) => { d.details = 0 },
+      openCollaboration: (d) => {
+        d.details = 0
+        if (d.collaboration === 0) d.collaboration = COLLABORATION_DEFAULT
+      },
+      closeCollaboration: (d) => { d.collaboration = 0 },
     },
   })
   return handle

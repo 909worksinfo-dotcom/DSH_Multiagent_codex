@@ -220,7 +220,7 @@ Assembler 还把 reference-stable timeline 交给 View Builder。业务不重复
 
 Prepend 保留已有 Context key 和 current Node identity。新页可以在 Chat `order` 前部增加 key，也可以修正既有 Node 的 anchor、Location、visibility 或 data，但不会为无关业务重新创建 Context。
 
-Chat Builder 遇到结构变化时会从 keyed store 重算可见 `order` 和 Location 二级索引；这是视图索引计算，不会重新执行全部业务 Definition 或替换未变化 Node value。
+Chat Builder 遇到结构变化时会从 keyed store 重算可见 `order`、连续 activity-flow 分组和 Location 二级索引；这是视图索引计算，不会重新执行全部业务 Definition 或替换未变化 Node value。
 
 Reader gap 修复是 prepend 与普通 append 最大的算法差异。新页不仅可能创建可见历史 Node，也可能改变后续 Inbox 瞬间态以及依赖它的 Message 分类。
 
@@ -306,13 +306,13 @@ Unknown fallback 展示了 Registry ownership：fallback 只处理没有任何�
 
 Assembler 低频完整替换时调用 `replace({ nodes, timeline })`；普通 prepend/append flush 调用 `apply({ upserts, timeline })`。Builder 只接收 Definition 已构造完成的 target Nodes。
 
-[`ChatSnapshotBuilder`](../../../../packages/client/ui-conversation/src/client/conversation-nodes/chat-snapshot-builder.ts) 维护 `order`、keyed `nodes` store、turn/step `locations` index、`timeline`，以及由 StatsLine 使用并镜像到顶层公共兼容字段的 `legacy` slice。
+[`ChatSnapshotBuilder`](../../../../packages/client/ui-conversation/src/client/conversation-nodes/chat-snapshot-builder.ts) 维护 `order`、由 builder 拥有的 `flow` 展示索引、keyed `nodes` store、turn/step `locations` index、`timeline`，以及由 StatsLine 使用并镜像到顶层公共兼容字段的 `legacy` slice。
 
-Chat 结构变化只由新 key、`anchorSeq`、visibility 或 Location identity 变化触发。普通内容变化不重建 `order`；keyed Node store 只替换该 key 的 value。
+Chat 结构变化只由新 key、`anchorSeq`、visibility、`flow` 或 Location identity 变化触发。普通内容变化不重建 `order` 或展示索引；keyed Node store 只替换该 key 的 value。
 
 Builder 遇到结构变化时从 store 的当前 values 计算 visible order，并按未变化引用复用索引数组。Prepend 可以增加前部历史 key，append 可以增加尾部或按业务 anchor 落位，既有 key 不因排序变化而重命名。
 
-[`ChatView`](../../../../packages/client/ui-conversation/src/client/chat/ChatView.tsx) 只遍历 `order`。每个 [`ChatNodeSeat`](../../../../packages/client/ui-conversation/src/client/chat/ChatNodeSeat.tsx) 以 Context key 固定在同一个父列表中，并按 `node.kind` 分发 `'conversation.chat.node'` keyed slot。
+[`ChatView`](../../../../packages/client/ui-conversation/src/client/chat/ChatView.tsx) 遍历 `flow`；普通项保留在常规列中，而 Definition 显式发布 `flow: 'activity'` 的连续节点共享一个限高滚动组。每个 [`ChatNodeSeat`](../../../../packages/client/ui-conversation/src/client/chat/ChatNodeSeat.tsx) 仍以 Context identity 为 key，并按 `node.kind` 分发 `'conversation.chat.node'` slot。
 
 [`ChatNodeDataMap`](../../../../packages/client/ui-conversation/src/client/contract/chat-nodes.ts) 是 declaration-merged 的 renderer payload registry。每个业务模块分别注册自己的 Definition 和 keyed renderer；`registerConversationNodes()` 与 `registerChatNodeRenderers()` 只负责装配这些独立贡献，不通过 closed union 或中心 switch 解释业务。内建实现仍位于 `ui-conversation`，但该类型和注册边界允许业务迁入独立 package 而不修改 Chat dispatcher。
 

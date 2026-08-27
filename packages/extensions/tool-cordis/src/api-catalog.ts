@@ -408,8 +408,8 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
       {
         signature: 'async request(req: ApprovalRequest): Promise<ApprovalOutcome>',
         description: 'Ask the composed answerers to decide one readonly same-process request. The service borrows the request, agent, session, and live signal directly. The request requires an open turn because the audit pair must be enclosed by the durable log\'s commit/replay boundary; an idle ask rejects before appending anything. The answerer phase always produces an outcome: an aborted signal yields `\'cancelled\'`, a missing or throwing answerer yields `\'unavailable\'` (fail closed), and a rogue non-vocabulary return value is normalized to `\'unavailable\'`. A failure that prevents either audit append from committing still rejects because returning an unlogged decision would violate the pair. Session contains post-commit observer failures, so an authoritative append cannot reject the request or suppress its matching audit event.',
-        parameters: [{ name: 'req', description: 'the pending decision (agent, tool identity, reason, signal).' }],
-        returns: 'the closed outcome; `\'allowed-once\'` is the only grant.',
+        parameters: [{ name: 'req', description: 'the pending decision (agent, tool identity, operation class, reason, signal).' }],
+        returns: 'the closed outcome; requests with the same non-empty `taskKey` and tool in one turn reuse a prior `\'allowed-for-turn\'` grant as `\'allowed-once\'` without dispatching an answerer.',
         throws: ['when no turn is open or either audit event fails before the session append commit point.'],
       },
       {
@@ -638,6 +638,64 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         parameters: [],
         returns: 'the created sandbox after the configured cwd exists.',
         throws: ['when E2B rejects creation or the service is disposing.'],
+      },
+    ],
+  },
+  {
+    key: 'expertCatalog',
+    summary: 'Locally configured immutable ExpertBlueprint catalog.',
+    description: 'Locally configured immutable ExpertBlueprint catalog.',
+    methods: [
+      {
+        signature: 'list(): ExpertBlueprintRef[]',
+        description: 'List configured immutable revisions in deployment order.',
+        parameters: [],
+        returns: 'detached blueprint references.',
+      },
+      {
+        signature: 'get(ref: ExpertBlueprintRef): ExpertBlueprint',
+        description: 'Read one exact configured revision without resolving external capabilities.',
+        parameters: [{ name: 'ref', description: 'exact immutable selector.' }],
+        returns: 'a detached blueprint.',
+        throws: ['`CAPABILITY_UNAVAILABLE` when the revision is not configured.'],
+      },
+      {
+        signature: 'async resolve(ref: ExpertBlueprintRef, options: ResolveExpertBindingOptions = {}): Promise<ResolvedExpertBinding>',
+        description: 'Resolve one revision to the exact mountable preset, enabled plugin rows, and winning skill definitions.',
+        parameters: [{ name: 'ref', description: 'exact immutable selector.' }, { name: 'options', description: 'cwd-sensitive lookup and caller cancellation.' }],
+        returns: 'detached binding with a digest covering every resolved capability.',
+        throws: ['`CAPABILITY_UNAVAILABLE` instead of omitting any missing or indeterminate capability.'],
+      },
+    ],
+  },
+  {
+    key: 'expertRuntime',
+    summary: 'Expert child provisioning, recovery, drift enforcement, and execution-budget owner.',
+    description: 'Expert child provisioning, recovery, drift enforcement, and execution-budget owner.',
+    methods: [
+      {
+        signature: 'provision(lead: Agent, request: ProvisionExpertRequest): Promise<ProvisionedExpert>',
+        description: 'Resolve, reserve, durably bind, create, and activate one real expert child. P1 success commits after child publication and before the initial prompt enters its inbox.',
+        parameters: [{ name: 'lead', description: 'exact live TeamRun Lead.' }, { name: 'request', description: 'identities, blueprint revision, assignment, CAS revision, and cancellation.' }],
+        returns: 'active P1 member, immutable binding, and accepted initial message id.',
+      },
+      {
+        signature: 'recoverProvisioning( lead: Agent, attemptId: ExpertProvisionAttemptId, signal: AbortSignal, ): Promise<RecoveredExpert>',
+        description: 'Recover one P1 provisioning attempt without replaying a prompt already accepted by a persisted child.',
+        parameters: [{ name: 'lead', description: 'exact live TeamRun Lead.' }, { name: 'attemptId', description: 'existing immutable provisioning attempt.' }, { name: 'signal', description: 'caller cancellation through inspection or missing-child creation.' }],
+        returns: 'active P1 member plus whether a missing child had to start.',
+      },
+      {
+        signature: 'async followup( lead: Agent, childId: SessionId, content: ContentBlock[], options: SubagentFollowupOptions, ): Promise<MessageId>',
+        description: 'Deliver a later expert message after validating current catalog content and the durable parent/child descriptor pair.',
+        parameters: [{ name: 'lead', description: 'exact live TeamRun Lead.' }, { name: 'childId', description: 'exact expert child Session.' }, { name: 'content', description: 'user-role content to enqueue.' }, { name: 'options', description: 'durable attribution and pre-acceptance cancellation.' }],
+        returns: 'accepted inbox message id.',
+      },
+      {
+        signature: 'listBindings(lead: Agent): ExpertBindingEventData[]',
+        description: 'List immutable bindings owned by one live Lead.',
+        parameters: [{ name: 'lead', description: 'exact live TeamRun Lead.' }],
+        returns: 'detached records in append order.',
       },
     ],
   },
@@ -1589,6 +1647,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'skillMarketplace',
+    summary: 'Public marketplace search used by automatic team formation.',
+    description: 'Public marketplace search used by automatic team formation.',
+    methods: [
+      {
+        signature: 'async search(rawQuery: string, signal?: AbortSignal): Promise<SkillMarketplaceSearchResult>',
+        description: 'Search all first-wave providers without letting one outage suppress the others.',
+        parameters: [{ name: 'rawQuery', description: 'expert capability query.' }, { name: 'signal', description: 'caller cancellation.' }],
+        returns: 'ordered provider observations and bounded candidates.',
+      },
+    ],
+  },
+  {
     key: 'skills',
     summary: 'Layered registry of skill providers, the host+per-scope shape the tools registry established.',
     description: 'Layered registry of skill providers, the host+per-scope shape the tools registry established. A registration files into the layer of its calling context\'s scope (scopeOf): host rows and repository plugins land in the global layer, while a plugin mounted by an agent preset\'s standing composition lands in that preset\'s layer. A read merges the global layer with the viewing scope\'s chain — the nearest layer\'s entry wins a duplicate name outright, and the rank order decides duplicates only within one layer. It exposes sorted invocation-neutral summaries and loads full skill bodies on demand.',
@@ -1844,6 +1915,205 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Assemble global and scoped providers, detach tool parameters, apply canonical ordering, then run the assembly waterfall. Scoped sections and variables shadow globals. The returned waterfall value is authoritative except that an effective complete section is restored afterwards as the sole prompt section.',
         parameters: [{ name: 'context', description: 'the optional scope and plugin-defined assembly fields.' }],
         returns: 'the post-waterfall assembly with any complete prompt enforced.',
+      },
+    ],
+  },
+  {
+    key: 'teamOrchestrator',
+    summary: 'P3 owner for one TeamRun\'s automatic team formation records.',
+    description: 'P3 owner for one TeamRun\'s automatic team formation records.',
+    methods: [
+      {
+        signature: 'readonly config: Config',
+        description: 'Detached and deeply frozen deployment policy used by every later command.',
+        parameters: [],
+      },
+      {
+        signature: 'create(lead: Agent, request: CreateTeamOrchestrationRequest): Promise<TeamOrchestrationSnapshot>',
+        description: 'Create or resume the unique profile, plan, and charter for one live Lead.',
+        parameters: [{ name: 'lead', description: 'exact live top-level Agent whose Session owns the TeamRun.' }, { name: 'request', description: 'idempotency id, task text, optional domain/decomposition hints, and assignment context.' }],
+        returns: 'planning snapshot with an exact immutable roster and charter.',
+      },
+      {
+        signature: 'form(lead: Agent, command: TeamOrchestrationCommand, signal: AbortSignal): Promise<TeamOrchestrationSnapshot>',
+        description: 'Provision or recover every exact planned slot and activate only at full strength.',
+        parameters: [{ name: 'lead', description: 'exact live Lead.' }, { name: 'command', description: 'matching durable request id.' }, { name: 'signal', description: 'cancellation through catalog resolution and initial prompt admission.' }],
+        returns: 'active, exactly staffed TeamRun snapshot.',
+      },
+      {
+        signature: 'async orchestrate( lead: Agent, request: CreateTeamOrchestrationRequest, signal: AbortSignal, ): Promise<TeamOrchestrationSnapshot>',
+        description: 'Create, plan, charter, and fully form one team through the product one-click path.',
+        parameters: [{ name: 'lead', description: 'exact live Lead.' }, { name: 'request', description: 'automatic orchestration request.' }, { name: 'signal', description: 'formation cancellation.' }],
+        returns: 'active, exactly staffed team.',
+      },
+      {
+        signature: 'retry(lead: Agent, command: TeamOrchestrationCommand, signal: AbortSignal): Promise<TeamOrchestrationSnapshot>',
+        description: 'Idempotently continue a non-terminal provisioning run after a local interruption.',
+        parameters: [{ name: 'lead', description: 'exact live Lead.' }, { name: 'command', description: 'matching durable request id.' }, { name: 'signal', description: 'recovery cancellation.' }],
+        returns: 'active snapshot, or the same active snapshot on repeat.',
+      },
+      {
+        signature: 'replaceExpert( lead: Agent, request: ReplaceTeamExpertRequest, signal: AbortSignal, ): Promise<TeamOrchestrationSnapshot>',
+        description: 'Idempotently replace one failed active-run expert from its durable planned slot.',
+        parameters: [{ name: 'lead', description: 'exact live TeamRun Lead.' }, { name: 'request', description: 'matching request and failed immutable member identity.' }, { name: 'signal', description: 'provider cancellation propagated through recovery and provisioning.' }],
+        returns: 'active orchestration with the replacement settled successfully.',
+      },
+      {
+        signature: 'cancel(lead: Agent, request: CancelTeamOrchestrationRequest): Promise<TeamOrchestrationSnapshot>',
+        description: 'Cancel a non-terminal orchestration and preserve its current durable audit.',
+        parameters: [{ name: 'lead', description: 'exact live Lead.' }, { name: 'request', description: 'matching request id and user-safe reason.' }],
+        returns: 'cancelled snapshot.',
+      },
+      {
+        signature: 'get(lead: Agent): TeamOrchestrationSnapshot',
+        description: 'Read one live Lead\'s P3 projection, including a partial plan after explicit formation failure.',
+        parameters: [{ name: 'lead', description: 'exact live Lead.' }],
+        returns: 'detached orchestration and authoritative P1 snapshot.',
+      },
+      {
+        signature: 'list(): TeamOrchestrationSnapshot[]',
+        description: 'List P3 projections for current live top-level Leads in Agent registration order.',
+        parameters: [],
+        returns: 'detached snapshots; unrelated Agents and pre-profile crash gaps are absent.',
+      },
+    ],
+  },
+  {
+    key: 'teamRuns',
+    summary: 'Stable TeamRun service; `ctx.teamRuns` is independent from experimental `ctx.agentTeams`.',
+    description: 'Stable TeamRun service; `ctx.teamRuns` is independent from experimental `ctx.agentTeams`.',
+    methods: [
+      {
+        signature: 'async createRun(lead: Agent, request: CreateTeamRunRequest): Promise<TeamRunSnapshot>',
+        description: 'Atomically establish one explicit TeamRun before expert work begins.',
+        parameters: [{ name: 'lead', description: 'exact live initiating Agent, retained as the implicit Lead outside expert capacity.' }, { name: 'request', description: 'objective, complexity, and exact planned expert target.' }],
+        returns: 'authoritative profiling snapshot at revision one.',
+      },
+      {
+        signature: 'membership(agent: Agent): TeamMembership',
+        description: 'Resolve one exact live Agent\'s TeamRun role.',
+        parameters: [{ name: 'agent', description: 'exact live Lead or active expert.' }],
+        returns: 'current run and actor authority.',
+      },
+      {
+        signature: 'tryMembership(agent: Agent): TeamMembership | undefined',
+        description: 'Resolve membership without throwing for scoped installation and observers.',
+        parameters: [{ name: 'agent', description: 'candidate exact live Agent.' }],
+        returns: 'membership, or undefined for an unrostered, inactive, stale, or malformed Agent.',
+      },
+      {
+        signature: 'getRun(caller: Agent): TeamRunSnapshot',
+        description: 'Read the authoritative run visible to one exact live member.',
+        parameters: [{ name: 'caller', description: 'exact live Lead or active expert.' }],
+        returns: 'detached current TeamRun snapshot.',
+      },
+      {
+        signature: 'async changePhase(caller: Agent, request: ChangeTeamRunPhaseRequest): Promise<TeamRunSnapshot>',
+        description: 'Advance profiling, planning, formation, execution, or completion with run-level CAS.',
+        parameters: [{ name: 'caller', description: 'exact live Lead.' }, { name: 'request', description: 'expected revision and next non-failure phase.' }],
+        returns: 'committed TeamRun snapshot.',
+      },
+      {
+        signature: 'async materializeProtocol(caller: Agent, request: MaterializeTeamProtocolRequest): Promise<TeamRunSnapshot>',
+        description: 'Idempotently commit the exact Team Charter collaboration protocol before activation.',
+        parameters: [{ name: 'caller', description: 'exact live TeamRun Lead.' }, { name: 'request', description: 'run CAS plus topology, limits, immutable slots, permissions, and routes.' }],
+        returns: 'authoritative snapshot containing the enforced protocol projection.',
+      },
+      {
+        signature: 'async beginExpertProvision( caller: Agent, request: BeginExpertProvisionRequest, ): Promise<TeamMemberSnapshot>',
+        description: 'Reserve one immutable expert attempt before P2 starts provider work, during formation or active replacement.',
+        parameters: [{ name: 'caller', description: 'exact live Lead.' }, { name: 'request', description: 'run CAS, reserved ids, name, and role.' }],
+        returns: 'committed provisioning attempt.',
+      },
+      {
+        signature: 'async succeedExpertProvision( caller: Agent, request: SucceedExpertProvisionRequest, ): Promise<TeamMemberSnapshot>',
+        description: 'Record one expert as active after P2 reports provider success.',
+        parameters: [{ name: 'caller', description: 'exact live Lead.' }, { name: 'request', description: 'run CAS and immutable attempt identity.' }],
+        returns: 'committed active expert row.',
+      },
+      {
+        signature: 'async failExpertProvision( caller: Agent, request: FailExpertProvisionRequest, ): Promise<TeamMemberSnapshot>',
+        description: 'Mark a provisioning attempt or active runtime expert failed while retaining audit and releasing capacity.',
+        parameters: [{ name: 'caller', description: 'exact live Lead.' }, { name: 'request', description: 'run CAS, immutable attempt identity, and structured failure.' }],
+        returns: 'committed failed expert row.',
+      },
+      {
+        signature: 'async terminateRun(caller: Agent, request: TerminateTeamRunRequest): Promise<TeamRunSnapshot>',
+        description: 'Commit an explicit formation failure, execution failure, or cancellation.',
+        parameters: [{ name: 'caller', description: 'exact live Lead.' }, { name: 'request', description: 'run CAS, exact terminal phase, and structured cause.' }],
+        returns: 'committed terminal TeamRun snapshot.',
+      },
+      {
+        signature: 'async createTask(caller: Agent, request: CreateTeamTaskRequest): Promise<TeamTaskView>',
+        description: 'Create one TeamRun task through the single Lead-log authority.',
+        parameters: [{ name: 'caller', description: 'exact live Lead or active expert.' }, { name: 'request', description: 'task text, blockers, and generic resource scopes.' }],
+        returns: 'committed revision-one task.',
+      },
+      {
+        signature: 'getTask(caller: Agent, taskId: import(\'./types.ts\').TeamTaskId): TeamTaskView',
+        description: 'Read one current task, including a deleted tombstone.',
+        parameters: [{ name: 'caller', description: 'exact live Lead or active expert.' }, { name: 'taskId', description: 'Team-local task identity.' }],
+        returns: 'detached task view.',
+      },
+      {
+        signature: 'listTasks(caller: Agent): TeamTaskView[]',
+        description: 'List current non-deleted TeamRun tasks.',
+        parameters: [{ name: 'caller', description: 'exact live Lead or active expert.' }],
+        returns: 'detached task views in creation order.',
+      },
+      {
+        signature: 'async updateTask(caller: Agent, request: UpdateTeamTaskRequest): Promise<TeamTaskView>',
+        description: 'Compare-and-set one authorized TeamRun task mutation.',
+        parameters: [{ name: 'caller', description: 'exact live Lead or active expert.' }, { name: 'request', description: 'task identity, expected revision, action, and action fields.' }],
+        returns: 'committed next task revision.',
+      },
+      {
+        signature: 'async publishMessage( caller: Agent, request: PublishCollaborationMessageRequest, ): Promise<PublicCollaborationMessage>',
+        description: 'Publish one public-only structured collaboration message.',
+        parameters: [{ name: 'caller', description: 'exact live Lead or active expert author.' }, { name: 'request', description: 'kind, thread, targets, references, and user-safe content.' }],
+        returns: 'committed public message with event cursor and creation time.',
+      },
+      {
+        signature: 'async writeArtifact(caller: Agent, request: WriteTeamArtifactRequest): Promise<TeamArtifactRecord>',
+        description: 'Write one complete artifact version and a body-free public receipt atomically.',
+        parameters: [{ name: 'caller', description: 'exact live Lead or active expert author.' }, { name: 'request', description: 'artifact CAS, metadata, task relations, status, and bounded body.' }],
+        returns: 'complete artifact to the authorized caller.',
+      },
+      {
+        signature: 'readArtifact(caller: Agent, artifactId: import(\'./types.ts\').TeamArtifactId): TeamArtifactRecord',
+        description: 'Read one complete artifact through current TeamRun membership authority.',
+        parameters: [{ name: 'caller', description: 'exact live Lead or active expert.' }, { name: 'artifactId', description: 'artifact identity.' }],
+        returns: 'complete current artifact including its body.',
+      },
+      {
+        signature: 'async writeDecision(caller: Agent, request: WriteTeamDecisionRequest): Promise<TeamDecisionRecord>',
+        description: 'Write one Lead arbitration row and its public decision record atomically.',
+        parameters: [{ name: 'caller', description: 'exact live Lead.' }, { name: 'request', description: 'decision CAS, outcome, safe rationale, and ledger relations.' }],
+        returns: 'committed decision.',
+      },
+      {
+        signature: 'async createQualityGate(caller: Agent, request: CreateTeamQualityGateRequest): Promise<TeamQualityGateRecord>',
+        description: 'Materialize one pending quality gate before activation.',
+        parameters: [{ name: 'caller', description: 'exact live Lead.' }, { name: 'request', description: 'immutable gate name.' }],
+        returns: 'committed pending gate.',
+      },
+      {
+        signature: 'async updateQualityGate(caller: Agent, request: UpdateTeamQualityGateRequest): Promise<TeamQualityGateRecord>',
+        description: 'Commit one formal quality result and its public review atomically.',
+        parameters: [{ name: 'caller', description: 'exact live Lead reviewer.' }, { name: 'request', description: 'gate CAS, result, safe summary, and optional relations.' }],
+        returns: 'committed quality gate.',
+      },
+      {
+        signature: 'async control(caller: Agent, request: TeamControlRequest): Promise<TeamRunSnapshot>',
+        description: 'Apply one Lead-only task correction with decision and public evidence in one batch.',
+        parameters: [{ name: 'caller', description: 'exact live Lead Controller authority.' }, { name: 'request', description: 'run/task CAS, correction, and safe rationale.' }],
+        returns: 'committed run snapshot.',
+      },
+      {
+        signature: 'async completeRun(caller: Agent, request: CompleteTeamRunRequest): Promise<TeamRunSnapshot>',
+        description: 'Atomically close one fully completed and publicly reviewed run with a Lead delivery.',
+        parameters: [{ name: 'caller', description: 'exact live TeamRun Lead.' }, { name: 'request', description: 'public thread, optional typed references, and final user delivery.' }],
+        returns: 'committed completed snapshot containing the final delivery.',
       },
     ],
   },
@@ -2762,7 +3032,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ApprovalOutcome',
-    declaration: 'export type ApprovalOutcome = \'allowed-once\' | \'rejected\' | \'cancelled\' | \'unavailable\';',
+    declaration: 'export type ApprovalOutcome = \'allowed-once\' | \'allowed-for-turn\' | \'rejected\' | \'cancelled\' | \'unavailable\';',
   },
   {
     name: 'ApprovalPolicy',
@@ -2770,7 +3040,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ApprovalRequest',
-    declaration: 'export interface ApprovalRequest {\n    readonly agent: Agent;\n    readonly toolName: string;\n    readonly callId?: CallId;\n    readonly reason?: string;\n    readonly signal?: AbortSignal;\n}',
+    declaration: 'export interface ApprovalRequest {\n    readonly agent: Agent;\n    readonly toolName: string;\n    readonly callId?: CallId;\n    readonly reason?: string;\n    readonly taskKey?: string;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'ApprovalService',
@@ -2841,12 +3111,24 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface BashEnvVariableInfo extends BashEnvVariable {\n    contributor: string;\n    key: DshEnvironmentKey;\n}',
   },
   {
+    name: 'BeginExpertProvisionRequest',
+    declaration: 'export interface BeginExpertProvisionRequest {\n    readonly expectedRevision: number;\n    readonly memberId: TeamMemberId;\n    readonly sessionId: SessionId;\n    readonly attemptId: ProvisionAttemptId;\n    readonly name: string;\n    readonly role: string;\n    readonly protocolSlotId?: TeamProtocolSlotId;\n}',
+  },
+  {
     name: 'Branded',
     declaration: 'export type Branded<B extends string> = string & {\n    readonly [BRAND]: B;\n};',
   },
   {
     name: 'CancelOptions',
     declaration: 'export interface CancelOptions {\n    keepInbox?: boolean | undefined;\n}',
+  },
+  {
+    name: 'CancelTeamOrchestrationRequest',
+    declaration: 'export interface CancelTeamOrchestrationRequest extends TeamOrchestrationCommand {\n    readonly reason: string;\n}',
+  },
+  {
+    name: 'ChangeTeamRunPhaseRequest',
+    declaration: 'export interface ChangeTeamRunPhaseRequest {\n    readonly expectedRevision: number;\n    readonly phase: \'planning\' | \'provisioning\' | \'active\' | \'completing\' | \'completed\';\n}',
   },
   {
     name: 'ClientResponse',
@@ -2883,6 +3165,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'CodeRunResult',
     declaration: 'export interface CodeRunResult {\n    value?: CodeJsonValue;\n    logs: string[];\n    error?: CodeRunFailure;\n}',
+  },
+  {
+    name: 'CollaborationErrorCode',
+    declaration: 'export type CollaborationErrorCode = \'TEAM_MEMBER_LIMIT\' | \'TEAM_PROVISION_ATTEMPT_LIMIT\' | \'FORMATION_FAILED\' | \'CAPABILITY_UNAVAILABLE\' | \'BLUEPRINT_REVISION_MISMATCH\' | \'RESOURCE_CONFLICT\' | \'STALE_REVISION\' | \'DELIVERY_FAILED\' | \'TEAM_INVALID_ARGUMENT\' | \'TEAM_INVALID_CONFIG\' | \'TEAM_NOT_FOUND\' | \'TEAM_NOT_MEMBER\' | \'TEAM_LEAD_REQUIRED\' | \'TEAM_MEMBER_NOT_FOUND\' | \'TEAM_MEMBER_NAME_TAKEN\' | \'TEAM_MEMBER_ID_TAKEN\' | \'TEAM_ATTEMPT_ID_TAKEN\' | \'TEAM_SESSION_ID_TAKEN\' | \'TEAM_INVALID_TRANSITION\' | \'TEAM_CANCELLED\' | \'TEAM_TASK_LIMIT\' | \'TEAM_TASK_NOT_FOUND\' | \'TEAM_TASK_BLOCKED\' | \'TEAM_TASK_UNAUTHORIZED\' | \'TEAM_TASK_INVALID_TRANSITION\' | \'TEAM_TASK_DEPENDENCY_CYCLE\' | \'TEAM_TASK_HAS_DEPENDENTS\' | \'TEAM_MESSAGE_LIMIT\' | \'TEAM_MESSAGE_TOO_LARGE\' | \'TEAM_PROTOCOL_REQUIRED\' | \'TEAM_PROTOCOL_PERMISSION_DENIED\' | \'TEAM_PROTOCOL_TARGET_DENIED\' | \'TEAM_EXPERT_MESSAGE_BUDGET_EXHAUSTED\' | \'TEAM_CHALLENGE_INVALID\' | \'TEAM_CHALLENGE_ROUND_LIMIT\' | \'TEAM_ARTIFACT_LIMIT\' | \'TEAM_ARTIFACT_NOT_FOUND\' | \'TEAM_ARTIFACT_TOO_LARGE\' | \'TEAM_ARTIFACT_UNAUTHORIZED\' | \'TEAM_DECISION_NOT_FOUND\' | \'TEAM_QUALITY_GATE_NOT_FOUND\' | \'TEAM_CONTROL_INVALID_ACTION\';',
+  },
+  {
+    name: 'CollaborationEventId',
+    declaration: 'export type CollaborationEventId = Branded<\'CollaborationEventId\'>;',
+  },
+  {
+    name: 'CollaborationMessageId',
+    declaration: 'export type CollaborationMessageId = Branded<\'CollaborationMessageId\'>;',
   },
   {
     name: 'CollectedOutput',
@@ -2933,6 +3227,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type CompactionTrigger = \'pressure\' | \'context-overflow\';',
   },
   {
+    name: 'CompleteTeamRunRequest',
+    declaration: 'export interface CompleteTeamRunRequest {\n    readonly threadId: TeamThreadId;\n    readonly references?: PublicCollaborationReferences;\n    readonly content: string;\n}',
+  },
+  {
     name: 'ConfinedArgv',
     declaration: 'export interface ConfinedArgv {\n    argv: string[];\n    enforcement: SandboxEnforcement;\n    denialSignatures: readonly string[];\n    runnerFailureRules: readonly RunnerFailureRule[];\n}',
   },
@@ -2974,11 +3272,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ContinuableStartSpec',
-    declaration: 'export interface ContinuableStartSpec {\n    readonly provider: string;\n    readonly label: string;\n    readonly childId?: SessionId;\n    readonly request: Omit<SubagentStartRequest, \'label\' | \'signal\' | \'outputSchema\'>;\n    readonly signal: AbortSignal;\n}',
+    declaration: 'export interface ContinuableStartSpec {\n    readonly provider: string;\n    readonly label: string;\n    readonly childId?: SessionId;\n    readonly agentPreset?: string;\n    readonly request: Omit<SubagentStartRequest, \'label\' | \'signal\' | \'outputSchema\'>;\n    readonly beforeInitialPrompt?: () => Promise<void>;\n    readonly signal: AbortSignal;\n}',
   },
   {
     name: 'ContinuableSubagentDescriptorData',
-    declaration: 'export interface ContinuableSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'continuable\';\n    readonly label: string;\n    readonly agentProvider?: string;\n    readonly agentModel?: string;\n    readonly persona?: string;\n    readonly toolFilter?: ToolRestriction;\n}',
+    declaration: 'export interface ContinuableSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'continuable\';\n    readonly label: string;\n    readonly agentProvider?: string;\n    readonly agentModel?: string;\n    readonly agentMaxTokens?: number;\n    readonly agentPreset?: string;\n    readonly persona?: string;\n    readonly toolFilter?: ToolRestriction;\n}',
   },
   {
     name: 'CordisDynamicPackageId',
@@ -3025,8 +3323,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface CreateSessionOptions {\n    readonly seed?: readonly SessionEvent[];\n    readonly meta?: {\n        readonly cwd?: string;\n        readonly parentSession?: SessionId;\n        readonly createdAt?: number;\n        readonly seedLength?: number;\n        readonly origin?: \'subagent\';\n        readonly delegationDepth?: number;\n        readonly agentPreset?: string;\n    };\n}',
   },
   {
-    name: 'CreateTeamTaskRequest',
-    declaration: 'export interface CreateTeamTaskRequest {\n    readonly subject: string;\n    readonly description: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n}',
+    name: 'CreateTeamOrchestrationRequest',
+    declaration: 'export interface CreateTeamOrchestrationRequest {\n    readonly requestId: TeamOrchestrationRequestId;\n    readonly retryOf?: TeamOrchestrationRequestId;\n    readonly objective: string;\n    readonly domain?: TeamTaskDomain;\n    readonly successCriteria?: readonly string[];\n    readonly workstreams?: readonly {\n        readonly id: string;\n        readonly subject: string;\n        readonly description: string;\n        readonly blockedBy?: readonly string[];\n        readonly requiredCapabilities?: readonly string[];\n        readonly resourceScopes?: readonly string[];\n    }[];\n    readonly riskSignals?: readonly string[];\n    readonly context?: Readonly<Record<string, string>>;\n}',
+  },
+  {
+    name: 'CreateTeamQualityGateRequest',
+    declaration: 'export interface CreateTeamQualityGateRequest {\n    readonly name: string;\n}',
+  },
+  {
+    name: 'CreateTeamRunRequest',
+    declaration: 'export interface CreateTeamRunRequest {\n    readonly objective: string;\n    readonly complexity: TeamRunComplexity;\n    readonly plannedExperts: number;\n}',
   },
   {
     name: 'CredentialInfo',
@@ -3147,6 +3453,66 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'EpochHeader',
     declaration: 'export interface EpochHeader {\n    config: LlmCallConfig;\n    adapterDefaults?: LlmCallConfigAdapterDefaults;\n    system?: string;\n    tools?: ToolSchema[];\n}',
+  },
+  {
+    name: 'ExpertAssignment',
+    declaration: 'export interface ExpertAssignment {\n    readonly objective: string;\n    readonly language?: \'zh\' | \'en\';\n    readonly inputs: Readonly<Record<string, string>>;\n}',
+  },
+  {
+    name: 'ExpertBindingDescriptor',
+    declaration: 'export interface ExpertBindingDescriptor {\n    readonly blueprint: ExpertBlueprintRef;\n    readonly displayRole?: string;\n    readonly blueprintDigest: string;\n    readonly preset: ResolvedPresetBinding;\n    readonly skills: readonly ResolvedSkillBinding[];\n    readonly marketplaceSkills?: readonly SkillMarketplaceCapability[];\n    readonly plugins: readonly string[];\n    readonly digest: ExpertBindingDigestType;\n    readonly model: AgentOptions;\n    readonly compositionDigest: string;\n    readonly execution: {\n        readonly maxTurns: number;\n        readonly maxTokens: number;\n        readonly deadlineAt: number;\n    };\n}',
+  },
+  {
+    name: 'ExpertBindingDigest',
+    declaration: 'export type ExpertBindingDigest = Branded<\'ExpertBindingDigest\'>;',
+  },
+  {
+    name: 'ExpertBindingEventData',
+    declaration: 'export interface ExpertBindingEventData {\n    readonly version: 1;\n    readonly eventId: ExpertRuntimeEventId;\n    readonly runId: TeamRunIdType;\n    readonly memberId: TeamMemberIdType;\n    readonly sessionId: SessionId;\n    readonly attemptId: ExpertProvisionAttemptId;\n    readonly name: string;\n    readonly role: string;\n    readonly subagentProvider: string;\n    readonly descriptor: ExpertBindingDescriptor;\n    readonly initialPrompt: string;\n    readonly agentOptions: AgentOptions;\n    readonly persona?: string;\n    readonly toolFilter: {\n        readonly allow?: readonly string[];\n        readonly deny?: readonly string[];\n    };\n}',
+  },
+  {
+    name: 'ExpertBlueprint',
+    declaration: 'export interface ExpertBlueprint {\n    readonly ref: ExpertBlueprintRef;\n    readonly role: string;\n    readonly objective: string;\n    readonly preset: string;\n    readonly skills: readonly string[];\n    readonly plugins: readonly string[];\n    readonly tools: ExpertToolPolicy;\n    readonly model: ExpertModelPolicy;\n    readonly persona?: string;\n    readonly inputs: readonly ExpertFieldDefinition[];\n    readonly outputs: readonly ExpertFieldDefinition[];\n    readonly acceptanceCriteria: readonly string[];\n    readonly collaboration: ExpertCollaborationPermissions;\n    readonly budget: ExpertExecutionBudget;\n}',
+  },
+  {
+    name: 'ExpertBlueprintId',
+    declaration: 'export type ExpertBlueprintId = Branded<\'ExpertBlueprintId\'>;',
+  },
+  {
+    name: 'ExpertBlueprintRef',
+    declaration: 'export interface ExpertBlueprintRef {\n    readonly id: ExpertBlueprintId;\n    readonly revision: number;\n}',
+  },
+  {
+    name: 'ExpertCollaborationPermissions',
+    declaration: 'export interface ExpertCollaborationPermissions {\n    readonly challenge: boolean;\n    readonly review: boolean;\n    readonly requestHelp: boolean;\n}',
+  },
+  {
+    name: 'ExpertExecutionBudget',
+    declaration: 'export interface ExpertExecutionBudget {\n    readonly maxTurns: number;\n    readonly maxTokens: number;\n    readonly timeoutMs: number;\n}',
+  },
+  {
+    name: 'ExpertFieldDefinition',
+    declaration: 'export interface ExpertFieldDefinition {\n    readonly name: string;\n    readonly description: string;\n    readonly required: boolean;\n}',
+  },
+  {
+    name: 'ExpertModelPolicy',
+    declaration: 'export interface ExpertModelPolicy {\n    readonly provider?: string;\n    readonly model?: string;\n    readonly maxTokens?: number;\n}',
+  },
+  {
+    name: 'ExpertProvisionAttemptId',
+    declaration: 'export type ExpertProvisionAttemptId = TeamMemberSnapshot[\'attemptId\'];',
+  },
+  {
+    name: 'ExpertRuntimeEventId',
+    declaration: 'export type ExpertRuntimeEventId = Branded<\'ExpertRuntimeEventId\'>;',
+  },
+  {
+    name: 'ExpertToolPolicy',
+    declaration: 'export interface ExpertToolPolicy {\n    readonly allow?: readonly string[];\n    readonly deny?: readonly string[];\n}',
+  },
+  {
+    name: 'FailExpertProvisionRequest',
+    declaration: 'export interface FailExpertProvisionRequest extends SucceedExpertProvisionRequest {\n    readonly failure: TeamFailure;\n}',
   },
   {
     name: 'FileDiff',
@@ -3485,6 +3851,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
   },
   {
+    name: 'MaterializeTeamProtocolRequest',
+    declaration: 'export interface MaterializeTeamProtocolRequest extends TeamProtocolRecord {\n    readonly expectedRevision: number;\n}',
+  },
+  {
     name: 'Message',
     declaration: 'export interface Message {\n    readonly id: MessageId;\n    readonly role: \'system\' | \'user\' | \'assistant\';\n    readonly content: ContentBlock[];\n    readonly source: MessageSource;\n}',
   },
@@ -3601,6 +3971,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface PermissionSelect {\n    options: PresetOption[];\n    currentValue: string;\n}',
   },
   {
+    name: 'PlannedExpert',
+    declaration: 'export interface PlannedExpert {\n    readonly slotId: TeamPlanSlotId;\n    readonly name: string;\n    readonly role: string;\n    readonly blueprint: ExpertBlueprintRef;\n    readonly assignment: {\n        readonly objective: string;\n        readonly language?: \'zh\' | \'en\';\n        readonly inputs: Readonly<Record<string, string>>;\n    };\n    readonly acceptanceCriteria: readonly string[];\n    readonly budget: ExpertExecutionBudget;\n    readonly skillDiscovery?: PlannedExpertSkillDiscovery;\n}',
+  },
+  {
+    name: 'PlannedExpertSkillDiscovery',
+    declaration: 'export interface PlannedExpertSkillDiscovery {\n    readonly providers: readonly Pick<SkillMarketplaceProviderResult, \'source\' | \'state\'>[];\n    readonly mounts: readonly SkillMarketplaceCapability[];\n}',
+  },
+  {
     name: 'PostToolDecision',
     declaration: 'export type PostToolDecision = {\n    kind: \'accept\';\n    content?: ContentBlock[];\n    value?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'accept\';\n    value: JsonValue;\n    content?: never;\n    additionalContexts?: UserMessage[];\n} | {\n    kind: \'block\';\n    feedback: ContentBlock[];\n    additionalContexts?: UserMessage[];\n};',
   },
@@ -3673,12 +4051,40 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ProviderRequestId = Branded<\'ProviderRequestId\'>;',
   },
   {
+    name: 'ProvisionAttemptId',
+    declaration: 'export type ProvisionAttemptId = Branded<\'ProvisionAttemptId\'>;',
+  },
+  {
+    name: 'ProvisionedExpert',
+    declaration: 'export interface ProvisionedExpert {\n    readonly member: TeamMemberSnapshot;\n    readonly binding: ExpertBindingEventData;\n    readonly messageId: MessageId;\n}',
+  },
+  {
+    name: 'ProvisionExpertRequest',
+    declaration: 'export interface ProvisionExpertRequest {\n    readonly expectedRevision: number;\n    readonly memberId: TeamMemberIdType;\n    readonly sessionId: SessionId;\n    readonly attemptId: ExpertProvisionAttemptId;\n    readonly name: string;\n    readonly role?: string;\n    readonly protocolSlotId?: TeamProtocolSlotIdType;\n    readonly blueprint: ExpertBlueprintRef;\n    readonly marketplaceSkills?: readonly SkillMarketplaceCapability[];\n    readonly assignment: ExpertAssignment;\n    readonly signal: AbortSignal;\n}',
+  },
+  {
     name: 'PrunedEntry',
     declaration: 'export interface PrunedEntry {\n    readonly originalSeq: number;\n    readonly replacementSeq: number;\n    readonly callId: CallId;\n    readonly charsBefore: number;\n    readonly charsAfter: number;\n}',
   },
   {
     name: 'PruneResult',
     declaration: 'export interface PruneResult {\n    readonly pruned: readonly PrunedEntry[];\n    readonly charsRemoved: number;\n}',
+  },
+  {
+    name: 'PublicCollaborationMessage',
+    declaration: 'export interface PublicCollaborationMessage {\n    readonly id: CollaborationMessageId;\n    readonly eventId: CollaborationEventId;\n    readonly sequence: number;\n    readonly runId: TeamRunId;\n    readonly threadId: TeamThreadId;\n    readonly kind: PublicCollaborationMessageKind;\n    readonly author: TeamActorRef;\n    readonly targets: readonly TeamActorRef[];\n    readonly references: PublicCollaborationReferences;\n    readonly content: string;\n    readonly createdAt: number;\n    readonly visibility: \'public\';\n}',
+  },
+  {
+    name: 'PublicCollaborationMessageKind',
+    declaration: 'export type PublicCollaborationMessageKind = \'task\' | \'inform\' | \'proposal\' | \'request_help\' | \'challenge\' | \'response\' | \'review\' | \'decision\' | \'handoff\' | \'blocked\' | \'completion_request\' | \'artifact\' | \'status\' | \'final_delivery\';',
+  },
+  {
+    name: 'PublicCollaborationReferences',
+    declaration: 'export interface PublicCollaborationReferences {\n    readonly taskId?: TeamTaskId;\n    readonly challengeId?: TeamChallengeId;\n    readonly decisionId?: TeamDecisionId;\n    readonly artifactId?: TeamArtifactId;\n}',
+  },
+  {
+    name: 'PublishCollaborationMessageRequest',
+    declaration: 'export interface PublishCollaborationMessageRequest {\n    readonly kind: PublicCollaborationMessageKind;\n    readonly threadId: TeamThreadId;\n    readonly targets?: readonly string[];\n    readonly references?: PublicCollaborationReferences;\n    readonly content: string;\n}',
   },
   {
     name: 'ReadFileLine',
@@ -3697,8 +4103,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ReasoningEffortId = Branded<\'ReasoningEffortId\'>;',
   },
   {
+    name: 'RecoveredExpert',
+    declaration: 'export interface RecoveredExpert {\n    readonly member: TeamMemberSnapshot;\n    readonly binding: ExpertBindingEventData;\n    readonly started: boolean;\n    readonly messageId?: MessageId;\n}',
+  },
+  {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
+  },
+  {
+    name: 'ReplaceTeamExpertRequest',
+    declaration: 'export interface ReplaceTeamExpertRequest extends TeamOrchestrationCommand {\n    readonly failedMemberId: TeamMemberSnapshot[\'id\'];\n}',
   },
   {
     name: 'ReplayEnvelope',
@@ -3729,8 +4143,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ResolvedCredential {\n    value: string;\n    source: string;\n}',
   },
   {
+    name: 'ResolvedExpertBinding',
+    declaration: 'export interface ResolvedExpertBinding {\n    readonly blueprint: ExpertBlueprint;\n    readonly blueprintDigest: string;\n    readonly preset: ResolvedPresetBinding;\n    readonly skills: readonly ResolvedSkillBinding[];\n    readonly plugins: readonly string[];\n    readonly digest: ExpertBindingDigest;\n}',
+  },
+  {
     name: 'ResolvedNormalRetryPolicy',
     declaration: 'export interface ResolvedNormalRetryPolicy extends ResolvedRetryBackoff {\n    readonly mode: \'normal\';\n    readonly maxRetries: number;\n    readonly retryableCodes: readonly string[];\n}',
+  },
+  {
+    name: 'ResolvedPresetBinding',
+    declaration: 'export interface ResolvedPresetBinding {\n    readonly id: string;\n    readonly contentDigest: string;\n}',
   },
   {
     name: 'ResolvedRetryBackoff',
@@ -3741,8 +4163,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ResolvedRetryPolicy = ResolvedNormalRetryPolicy | ResolvedAlwaysRetryPolicy;',
   },
   {
+    name: 'ResolvedSkillBinding',
+    declaration: 'export interface ResolvedSkillBinding {\n    readonly name: string;\n    readonly provider: string;\n    readonly source: string;\n    readonly contentDigest: string;\n    readonly path?: string;\n}',
+  },
+  {
     name: 'ResolvedSubagentStartRequest',
     declaration: 'export interface ResolvedSubagentStartRequest extends SubagentStartRequest {\n    readonly descriptor: SubagentDescriptorData;\n}',
+  },
+  {
+    name: 'ResolveExpertBindingOptions',
+    declaration: 'export interface ResolveExpertBindingOptions {\n    readonly cwd?: string;\n    readonly signal?: AbortSignal;\n}',
   },
   {
     name: 'RestoredSessionOptions',
@@ -4169,6 +4599,30 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SkillLookupOptions {\n    readonly cwd?: string | undefined;\n    readonly signal?: AbortSignal | undefined;\n}',
   },
   {
+    name: 'SkillMarketplaceCapability',
+    declaration: 'export interface SkillMarketplaceCapability {\n    readonly id: string;\n    readonly name: string;\n    readonly description: string;\n    readonly source: SkillMarketplaceSource;\n    readonly kind: SkillMarketplaceKind;\n    readonly status: SkillMarketplaceMountStatus;\n    readonly verified: boolean;\n    readonly popularity?: number;\n    readonly skillName?: string;\n    readonly instructions?: string;\n}',
+  },
+  {
+    name: 'SkillMarketplaceKind',
+    declaration: 'export type SkillMarketplaceKind = \'remote_tool\' | \'method_skill\';',
+  },
+  {
+    name: 'SkillMarketplaceMountStatus',
+    declaration: 'export type SkillMarketplaceMountStatus = \'loaded\' | \'connected\' | \'authorization_required\';',
+  },
+  {
+    name: 'SkillMarketplaceProviderResult',
+    declaration: 'export interface SkillMarketplaceProviderResult {\n    readonly source: SkillMarketplaceSource;\n    readonly state: \'ready\' | \'authorization_required\' | \'unavailable\';\n    readonly capabilities: readonly SkillMarketplaceCapability[];\n    readonly message?: string;\n}',
+  },
+  {
+    name: 'SkillMarketplaceSearchResult',
+    declaration: 'export interface SkillMarketplaceSearchResult {\n    readonly query: string;\n    readonly providers: readonly SkillMarketplaceProviderResult[];\n}',
+  },
+  {
+    name: 'SkillMarketplaceSource',
+    declaration: 'export type SkillMarketplaceSource = \'smithery\' | \'composio\' | \'skills_sh\';',
+  },
+  {
     name: 'SkillProvider',
     declaration: 'export interface SkillProvider {\n    readonly name: string;\n    readonly list: (options: SkillLookupOptions) => Promise<readonly SkillCandidate[] | SkillProviderObservation>;\n    readonly get: (candidate: SkillCandidate, options: SkillLookupOptions) => Promise<SkillDefinition | undefined>;\n}',
   },
@@ -4365,6 +4819,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface SubprocessTerminalSpawnSpec {\n    argv: readonly string[];\n    cwd: string;\n    env?: Record<string, string> | undefined;\n    rows: number;\n    cols: number;\n    graceMs: number;\n    signal?: AbortSignal | undefined;\n}',
   },
   {
+    name: 'SucceedExpertProvisionRequest',
+    declaration: 'export interface SucceedExpertProvisionRequest {\n    readonly expectedRevision: number;\n    readonly attemptId: ProvisionAttemptId;\n}',
+  },
+  {
     name: 'SurfaceEvent',
     declaration: 'export type SurfaceEvent = SessionEvent<SurfaceEventType> & {\n    surfaceOp: SurfaceOp;\n};',
   },
@@ -4389,12 +4847,96 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TableValueOf<S extends DomainSpec, N extends keyof S[\'tables\']> = S[\'tables\'][N] extends DomainTableSpec<string, infer V> ? V : never;',
   },
   {
-    name: 'TeamId',
-    declaration: 'export type TeamId = Branded<\'TeamId\'>;',
+    name: 'TaskProfile',
+    declaration: 'export interface TaskProfile {\n    readonly domain: TeamTaskDomain;\n    readonly objective: string;\n    readonly successCriteria: readonly string[];\n    readonly workstreams: readonly TeamWorkstream[];\n    readonly riskSignals: readonly string[];\n    readonly context: Readonly<Record<string, string>>;\n    readonly complexity: TeamRunComplexity;\n    readonly plannedExperts: number;\n    readonly metrics: TaskProfileMetrics;\n}',
   },
   {
-    name: 'TeamMembership',
-    declaration: 'export interface TeamMembership {\n    readonly root: Agent;\n    readonly id: TeamId;\n    readonly role: \'lead\' | \'teammate\';\n    readonly name: string;\n}',
+    name: 'TaskProfileMetrics',
+    declaration: 'export interface TaskProfileMetrics {\n    readonly workstreamCount: number;\n    readonly dependencyCount: number;\n    readonly independentWorkstreams: number;\n    readonly longestDependencyPath: number;\n    readonly capabilityCount: number;\n    readonly riskSignalCount: number;\n    readonly decomposable: boolean;\n    readonly toolDensity: \'low\' | \'medium\' | \'high\';\n    readonly risk: \'low\' | \'medium\' | \'high\';\n}',
+  },
+  {
+    name: 'TeamActorRef',
+    declaration: 'export type TeamActorRef = {\n    readonly role: \'lead\';\n    readonly sessionId: SessionId;\n    readonly name: \'lead\';\n} | {\n    readonly role: \'expert\';\n    readonly memberId: TeamMemberId;\n    readonly sessionId: SessionId;\n    readonly name: string;\n};',
+  },
+  {
+    name: 'TeamArtifactId',
+    declaration: 'export type TeamArtifactId = Branded<\'TeamArtifactId\'>;',
+  },
+  {
+    name: 'TeamArtifactKind',
+    declaration: 'export type TeamArtifactKind = \'document\' | \'code\' | \'dataset\' | \'evidence\' | \'analysis\' | \'product_spec\' | \'design\' | \'test_report\' | \'final_delivery\';',
+  },
+  {
+    name: 'TeamArtifactRecord',
+    declaration: 'export interface TeamArtifactRecord extends TeamArtifactSnapshot {\n    readonly body: string;\n}',
+  },
+  {
+    name: 'TeamArtifactSnapshot',
+    declaration: 'export interface TeamArtifactSnapshot {\n    readonly id: TeamArtifactId;\n    readonly version: number;\n    readonly kind: TeamArtifactKind;\n    readonly title: string;\n    readonly status: TeamArtifactStatus;\n    readonly author: TeamActorRef;\n    readonly taskIds: readonly TeamTaskId[];\n    readonly mediaType: string;\n    readonly updatedAt: number;\n}',
+  },
+  {
+    name: 'TeamArtifactStatus',
+    declaration: 'export type TeamArtifactStatus = \'draft\' | \'review\' | \'accepted\' | \'superseded\';',
+  },
+  {
+    name: 'TeamChallengeId',
+    declaration: 'export type TeamChallengeId = Branded<\'TeamChallengeId\'>;',
+  },
+  {
+    name: 'TeamChallengeView',
+    declaration: 'export interface TeamChallengeView {\n    readonly challengeId: TeamChallengeId;\n    readonly threadId: TeamThreadId;\n    readonly round: number;\n    readonly challenger: string;\n    readonly target: string;\n    readonly status: \'open\' | \'responded\';\n    readonly challengeMessageId: CollaborationMessageId;\n    readonly responseMessageId: CollaborationMessageId | null;\n}',
+  },
+  {
+    name: 'TeamCharter',
+    declaration: 'export interface TeamCharter {\n    readonly objective: string;\n    readonly successCriteria: readonly string[];\n    readonly topology: TeamTopology;\n    readonly roster: readonly {\n        readonly slotId: TeamPlanSlotId;\n        readonly name: string;\n        readonly role: string;\n        readonly blueprint: ExpertBlueprintRef;\n    }[];\n    readonly taskDag: readonly TeamWorkstream[];\n    readonly communication: TeamCommunicationLimits;\n    readonly qualityChecks: readonly string[];\n    readonly budgets: readonly {\n        readonly slotId: TeamPlanSlotId;\n        readonly execution: ExpertExecutionBudget;\n    }[];\n    readonly termination: {\n        readonly success: \'all_tasks_completed_and_reviewed\';\n        readonly formationFailure: \'fail_closed\';\n    };\n}',
+  },
+  {
+    name: 'TeamCollaborationTopology',
+    declaration: 'export type TeamCollaborationTopology = \'producer_reviewer\' | \'centralized\' | \'parallel\' | \'hybrid\' | \'grouped\';',
+  },
+  {
+    name: 'TeamCommunicationLimits',
+    declaration: 'export interface TeamCommunicationLimits {\n    readonly maxChallengeRounds: number;\n    readonly maxMessagesPerExpert: number;\n}',
+  },
+  {
+    name: 'TeamControllerRecommendedAction',
+    declaration: 'export type TeamControllerRecommendedAction = \'reassign\' | \'rework\' | \'replan\' | \'replace_expert\' | \'resolve_quality_failure\';',
+  },
+  {
+    name: 'TeamControllerSnapshot',
+    declaration: 'export interface TeamControllerSnapshot {\n    readonly health: \'healthy\' | \'attention\' | \'stalled\' | \'reworking\' | \'ready\';\n    readonly lastProgressAt: number;\n    readonly stalledTaskIds: readonly TeamTaskId[];\n    readonly duplicateWorkCount: number;\n    readonly qualityFailureCount: number;\n    readonly recommendedActions: readonly TeamControllerRecommendedAction[];\n    readonly actionsTaken: readonly TeamDecisionId[];\n}',
+  },
+  {
+    name: 'TeamControlRequest',
+    declaration: 'export interface TeamControlRequest {\n    readonly expectedRevision: number;\n    readonly taskId: TeamTaskId;\n    readonly expectedTaskRevision: number;\n    readonly action: \'reassign\' | \'rework\' | \'replan\';\n    readonly owner?: string;\n    readonly description?: string;\n    readonly rationale: string;\n}',
+  },
+  {
+    name: 'TeamDecisionId',
+    declaration: 'export type TeamDecisionId = Branded<\'TeamDecisionId\'>;',
+  },
+  {
+    name: 'TeamDecisionOutcome',
+    declaration: 'export type TeamDecisionOutcome = \'accepted\' | \'rejected\' | \'revise\' | \'unresolved\' | \'reassign\' | \'rework\' | \'replan\';',
+  },
+  {
+    name: 'TeamDecisionRecord',
+    declaration: 'export interface TeamDecisionRecord {\n    readonly id: TeamDecisionId;\n    readonly version: number;\n    readonly subject: string;\n    readonly outcome: TeamDecisionOutcome;\n    readonly summary: string;\n    readonly rationale: string;\n    readonly taskIds: readonly TeamTaskId[];\n    readonly artifactIds: readonly TeamArtifactId[];\n    readonly lead: Extract<TeamActorRef, {\n        readonly role: \'lead\';\n    }>;\n    readonly createdAt: number;\n}',
+  },
+  {
+    name: 'TeamExpertCounts',
+    declaration: 'export interface TeamExpertCounts {\n    readonly planned: number;\n    readonly provisioning: number;\n    readonly active: number;\n    readonly failed: number;\n    readonly attempts: number;\n    readonly availableSlots: number;\n}',
+  },
+  {
+    name: 'TeamFailure',
+    declaration: 'export interface TeamFailure {\n    readonly code: CollaborationErrorCode;\n    readonly message: string;\n    readonly retryable: boolean;\n    readonly details: Readonly<Record<string, TeamFailureDetailValue>>;\n}',
+  },
+  {
+    name: 'TeamFailureDetailValue',
+    declaration: 'export type TeamFailureDetailValue = string | number | boolean | null;',
+  },
+  {
+    name: 'TeamMemberId',
+    declaration: 'export type TeamMemberId = Branded<\'TeamMemberId\'>;',
   },
   {
     name: 'TeamMemberView',
@@ -4405,24 +4947,104 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type TeamMessageId = Branded<\'TeamMessageId\'>;',
   },
   {
-    name: 'TeamTaskAction',
-    declaration: 'export type TeamTaskAction = \'claim\' | \'release\' | \'edit\' | \'set_dependencies\' | \'complete\' | \'reopen\' | \'reassign\' | \'delete\';',
+    name: 'TeamOrchestrationCommand',
+    declaration: 'export interface TeamOrchestrationCommand {\n    readonly requestId: TeamOrchestrationRequestId;\n}',
   },
   {
-    name: 'TeamTaskId',
-    declaration: 'export type TeamTaskId = Branded<\'TeamTaskId\'>;',
+    name: 'TeamOrchestrationRequestId',
+    declaration: 'export type TeamOrchestrationRequestId = Branded<\'TeamOrchestrationRequestId\'>;',
   },
   {
-    name: 'TeamTaskStatus',
-    declaration: 'export type TeamTaskStatus = \'pending\' | \'in_progress\' | \'completed\' | \'deleted\';',
+    name: 'TeamOrchestrationSnapshot',
+    declaration: 'export interface TeamOrchestrationSnapshot {\n    readonly requestId: TeamOrchestrationRequestId;\n    readonly retryOf?: TeamOrchestrationRequestId;\n    readonly createdAt: number;\n    readonly run: TeamRunSnapshot;\n    readonly profile: TaskProfile;\n    readonly plan?: TeamPlan;\n    readonly charter?: TeamCharter;\n}',
   },
   {
-    name: 'TeamTaskView',
-    declaration: 'export interface TeamTaskView {\n    readonly id: TeamTaskId;\n    readonly revision: number;\n    readonly subject: string;\n    readonly description: string;\n    readonly status: TeamTaskStatus;\n    readonly blockedBy: TeamTaskId[];\n    readonly writeScopes: string[];\n    readonly ownerName?: string;\n    readonly ready: boolean;\n    readonly writeScopeWarnings: string[];\n}',
+    name: 'TeamPlan',
+    declaration: 'export interface TeamPlan {\n    readonly topology: TeamTopology;\n    readonly roster: readonly PlannedExpert[];\n    readonly taskDag: readonly TeamWorkstream[];\n}',
+  },
+  {
+    name: 'TeamPlanSlotId',
+    declaration: 'export type TeamPlanSlotId = Branded<\'TeamPlanSlotId\'>;',
+  },
+  {
+    name: 'TeamProtocolExpertRule',
+    declaration: 'export interface TeamProtocolExpertRule {\n    readonly slotId: TeamProtocolSlotId;\n    readonly initialMemberId: TeamMemberId;\n    readonly name: string;\n    readonly permissions: TeamProtocolPermissions;\n    readonly allowedTargetSlotIds: readonly TeamProtocolSlotId[];\n}',
+  },
+  {
+    name: 'TeamProtocolMemberView',
+    declaration: 'export interface TeamProtocolMemberView {\n    readonly slotId: TeamProtocolSlotId;\n    readonly memberId: TeamMemberId | null;\n    readonly name: string;\n    readonly phase: TeamMemberPhase | null;\n    readonly permissions: TeamProtocolPermissions;\n    readonly allowedTargets: readonly string[];\n    readonly usedMessages: number;\n    readonly remainingMessages: number;\n}',
+  },
+  {
+    name: 'TeamProtocolPermissions',
+    declaration: 'export interface TeamProtocolPermissions {\n    readonly challenge: boolean;\n    readonly review: boolean;\n    readonly requestHelp: boolean;\n}',
+  },
+  {
+    name: 'TeamProtocolRecord',
+    declaration: 'export interface TeamProtocolRecord {\n    readonly topology: TeamCollaborationTopology;\n    readonly maxChallengeRounds: number;\n    readonly maxMessagesPerExpert: number;\n    readonly experts: readonly TeamProtocolExpertRule[];\n}',
+  },
+  {
+    name: 'TeamProtocolSlotId',
+    declaration: 'export type TeamProtocolSlotId = Branded<\'TeamProtocolSlotId\'>;',
+  },
+  {
+    name: 'TeamProtocolSnapshot',
+    declaration: 'export interface TeamProtocolSnapshot {\n    readonly mode: \'legacy\' | \'enforced\';\n    readonly topology: TeamCollaborationTopology | null;\n    readonly limits: {\n        readonly maxChallengeRounds: number;\n        readonly maxMessagesPerExpert: number;\n    } | null;\n    readonly members: readonly TeamProtocolMemberView[];\n    readonly challenges: readonly TeamChallengeView[];\n}',
+  },
+  {
+    name: 'TeamQualityGateId',
+    declaration: 'export type TeamQualityGateId = Branded<\'TeamQualityGateId\'>;',
+  },
+  {
+    name: 'TeamQualityGateRecord',
+    declaration: 'export interface TeamQualityGateRecord {\n    readonly id: TeamQualityGateId;\n    readonly version: number;\n    readonly name: string;\n    readonly status: TeamQualityGateStatus;\n    readonly reviewer?: TeamActorRef;\n    readonly taskId?: TeamTaskId;\n    readonly artifactId?: TeamArtifactId;\n    readonly summary: string;\n    readonly updatedAt: number;\n}',
+  },
+  {
+    name: 'TeamQualityGateStatus',
+    declaration: 'export type TeamQualityGateStatus = \'pending\' | \'passed\' | \'failed\';',
+  },
+  {
+    name: 'TeamRunComplexity',
+    declaration: 'export type TeamRunComplexity = \'simple\' | \'medium\' | \'complex\';',
+  },
+  {
+    name: 'TeamRunId',
+    declaration: 'export type TeamRunId = Branded<\'TeamRunId\'>;',
+  },
+  {
+    name: 'TeamRunPhase',
+    declaration: 'export type TeamRunPhase = \'profiling\' | \'planning\' | \'provisioning\' | \'active\' | \'completing\' | \'completed\' | \'formation_failed\' | \'failed\' | \'cancelled\';',
+  },
+  {
+    name: 'TeamRunPolicySnapshot',
+    declaration: 'export interface TeamRunPolicySnapshot {\n    readonly maxActiveExperts: number;\n    readonly maxProvisionAttempts: number;\n    readonly maxTasks: number;\n    readonly maxPublicMessages: number;\n    readonly maxPublicMessageBytes: number;\n    readonly maxArtifacts: number;\n    readonly maxArtifactBodyBytes: number;\n    readonly taskStallCursorThreshold: number;\n}',
+  },
+  {
+    name: 'TeamRunPublicStatus',
+    declaration: 'export type TeamRunPublicStatus = \'forming\' | \'running\' | \'blocked\' | \'reviewing\' | \'reworking\' | \'completed\' | \'team_formation_failed\' | \'failed\' | \'cancelled\';',
+  },
+  {
+    name: 'TeamRunSnapshot',
+    declaration: 'export interface TeamRunSnapshot {\n    readonly id: TeamRunId;\n    readonly revision: number;\n    readonly cursor: number;\n    readonly lead: Extract<TeamActorRef, {\n        readonly role: \'lead\';\n    }>;\n    readonly objective: string;\n    readonly complexity: TeamRunComplexity;\n    readonly plannedExperts: number;\n    readonly policy: TeamRunPolicySnapshot;\n    readonly phase: TeamRunPhase;\n    readonly status: TeamRunPublicStatus;\n    readonly members: readonly TeamMemberSnapshot[];\n    readonly tasks: readonly TeamTaskView[];\n    readonly messages: readonly PublicCollaborationMessage[];\n    readonly protocol: TeamProtocolSnapshot;\n    readonly artifacts: readonly TeamArtifactSnapshot[];\n    readonly decisions: readonly TeamDecisionRecord[];\n    readonly qualityGates: readonly TeamQualityGateRecord[];\n    readonly controller: TeamControllerSnapshot;\n    readonly expertCounts: TeamExpertCounts;\n    readonly failure?: TeamFailure;\n}',
+  },
+  {
+    name: 'TeamTaskDomain',
+    declaration: 'export type TeamTaskDomain = \'research_analysis\' | \'product_solution\' | \'software_development\';',
+  },
+  {
+    name: 'TeamThreadId',
+    declaration: 'export type TeamThreadId = Branded<\'TeamThreadId\'>;',
+  },
+  {
+    name: 'TeamTopology',
+    declaration: 'export type TeamTopology = \'producer_reviewer\' | \'centralized\' | \'parallel\' | \'hybrid\' | \'grouped\';',
   },
   {
     name: 'TeamWaitResult',
     declaration: 'export interface TeamWaitResult {\n    readonly timedOut: boolean;\n}',
+  },
+  {
+    name: 'TeamWorkstream',
+    declaration: 'export interface TeamWorkstream {\n    readonly id: string;\n    readonly subject: string;\n    readonly description: string;\n    readonly blockedBy: readonly string[];\n    readonly requiredCapabilities: readonly string[];\n    readonly resourceScopes: readonly string[];\n}',
   },
   {
     name: 'TerminalBackend',
@@ -4503,6 +5125,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'TerminalWaitReason',
     declaration: 'export type TerminalWaitReason = \'stdin_read\' | \'inferred_idle\' | \'timeout\' | \'session_exit\';',
+  },
+  {
+    name: 'TerminateTeamRunRequest',
+    declaration: 'export interface TerminateTeamRunRequest {\n    readonly expectedRevision: number;\n    readonly terminalPhase: \'formation_failed\' | \'failed\' | \'cancelled\';\n    readonly failure: TeamFailure;\n}',
   },
   {
     name: 'TodoItem',
@@ -4705,8 +5331,8 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface TypertTypeModel {\n    readonly name: string;\n    readonly declaration: string;\n}',
   },
   {
-    name: 'UpdateTeamTaskRequest',
-    declaration: 'export interface UpdateTeamTaskRequest {\n    readonly taskId: TeamTaskId;\n    readonly expectedRevision: number;\n    readonly action: TeamTaskAction;\n    readonly subject?: string;\n    readonly description?: string;\n    readonly blockedBy?: readonly TeamTaskId[];\n    readonly writeScopes?: readonly string[];\n    readonly owner?: string;\n}',
+    name: 'UpdateTeamQualityGateRequest',
+    declaration: 'export interface UpdateTeamQualityGateRequest {\n    readonly gateId: TeamQualityGateId;\n    readonly expectedVersion: number;\n    readonly status: \'passed\' | \'failed\';\n    readonly summary: string;\n    readonly taskId?: TeamTaskId;\n    readonly artifactId?: TeamArtifactId;\n}',
   },
   {
     name: 'UserMessage',
@@ -4831,6 +5457,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'WorkflowStopReason',
     declaration: 'export type WorkflowStopReason = \'completed\' | \'cancelled\' | \'error\';',
+  },
+  {
+    name: 'WriteTeamArtifactRequest',
+    declaration: 'export interface WriteTeamArtifactRequest {\n    readonly artifactId?: TeamArtifactId;\n    readonly expectedVersion: number;\n    readonly kind: TeamArtifactKind;\n    readonly title: string;\n    readonly body: string;\n    readonly mediaType: string;\n    readonly taskIds?: readonly TeamTaskId[];\n    readonly status: TeamArtifactStatus;\n}',
+  },
+  {
+    name: 'WriteTeamDecisionRequest',
+    declaration: 'export interface WriteTeamDecisionRequest {\n    readonly decisionId?: TeamDecisionId;\n    readonly expectedVersion: number;\n    readonly subject: string;\n    readonly outcome: TeamDecisionOutcome;\n    readonly summary: string;\n    readonly rationale: string;\n    readonly taskIds?: readonly TeamTaskId[];\n    readonly artifactIds?: readonly TeamArtifactId[];\n}',
   },
 ]
 

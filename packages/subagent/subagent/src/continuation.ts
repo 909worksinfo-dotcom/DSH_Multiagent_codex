@@ -120,11 +120,19 @@ export interface ContinuableStartSpec {
    * before child materialization without a second identity handshake.
    */
   readonly childId?: SessionId
+  /** Exact preset mounted for this child and persisted for cold resume. */
+  readonly agentPreset?: string
   /**
    * The delegation request. The manager reserves the stable child id, resolves
    * the durable descriptor, and composes the child itself.
    */
   readonly request: Omit<SubagentStartRequest, 'label' | 'signal' | 'outputSchema'>
+  /**
+   * Optional durable-owner commit awaited after child publication but before
+   * the first prompt can enter its inbox. A rejection rolls the child back.
+   * Fresh creation only; cold resume never invokes this hook.
+   */
+  readonly beforeInitialPrompt?: () => Promise<void>
   /** Caller cancellation, owning the operation only until inbox acceptance. */
   readonly signal: AbortSignal
 }
@@ -262,7 +270,11 @@ interface MaterializeInputs {
     delegatedPolicies: DelegatedPolicyOverrides
   }
   agentOptions: AgentOptions
-  composition: { persona?: string | undefined; toolFilter?: ToolRestriction | undefined }
+  composition: {
+    agentPreset?: string | undefined
+    persona?: string | undefined
+    toolFilter?: ToolRestriction | undefined
+  }
   signal: AbortSignal
 }
 
@@ -419,12 +431,15 @@ export class SubagentContinuationManager {
     // before a child exists, and the detached value is what reaches the log.
     const agentProvider = request.agentOptions?.provider ?? parent.options.provider
     const agentModel = request.agentOptions?.model ?? parent.options.model
+    const agentMaxTokens = request.agentOptions?.maxTokens ?? parent.options.maxTokens
     const descriptor = snapshotSubagentDescriptor({
       mode: 'continuable',
       provider: spec.provider,
       label: spec.label,
       ...agentProvider !== undefined ? { agentProvider } : {},
       ...agentModel !== undefined ? { agentModel } : {},
+      ...agentMaxTokens !== undefined ? { agentMaxTokens } : {},
+      ...spec.agentPreset !== undefined ? { agentPreset: spec.agentPreset } : {},
       ...request.persona !== undefined ? { persona: request.persona } : {},
       ...request.toolFilter !== undefined ? { toolFilter: request.toolFilter } : {},
     })
@@ -459,11 +474,32 @@ export class SubagentContinuationManager {
         childId,
         provider: spec.provider,
         parent,
-        create: { seed, meta: childSessionMeta(parent, childDepth, lineageSeedLength), delegatedPolicies },
+        create: {
+          seed,
+          meta: childSessionMeta(parent, childDepth, lineageSeedLength, spec.agentPreset),
+          delegatedPolicies,
+        },
         agentOptions: resolveChildAgentOptions(parent, request.agentOptions, childDepth),
-        composition: { persona: request.persona, toolFilter: request.toolFilter },
+        composition: {
+          agentPreset: spec.agentPreset,
+          persona: request.persona,
+          toolFilter: request.toolFilter,
+        },
         signal: spec.signal,
       })
+      if (spec.beforeInitialPrompt !== undefined) {
+        try {
+          spec.signal.throwIfAborted()
+          await spec.beforeInitialPrompt()
+          spec.signal.throwIfAborted()
+          this.assertAdmitting(parent)
+        } catch (error: unknown) {
+          /* v8 ignore next -- owner-commit failure remains authoritative even
+           * when activation cleanup also fails. */
+          await this.dispose(activation).catch(() => undefined)
+          throw error
+        }
+      }
       return this.submitMaterialized(
         activation,
         request.prompt,
@@ -981,8 +1017,13 @@ export class SubagentContinuationManager {
         agentOptions: {
           ...descriptor.agentProvider !== undefined ? { provider: descriptor.agentProvider } : {},
           ...descriptor.agentModel !== undefined ? { model: descriptor.agentModel } : {},
+          ...descriptor.agentMaxTokens !== undefined ? { maxTokens: descriptor.agentMaxTokens } : {},
         },
-        composition: { persona: descriptor.persona, toolFilter: descriptor.toolFilter },
+        composition: {
+          agentPreset: descriptor.agentPreset,
+          persona: descriptor.persona,
+          toolFilter: descriptor.toolFilter,
+        },
         signal: options.signal,
       })
     } catch (error: unknown) {
@@ -1055,14 +1096,14 @@ export class SubagentContinuationManager {
     // `AgentRegistry.enter()` is the authoritative collision boundary for an id
     // some other owner holds — a duplicate would reject there with rollback.
     inputs.signal.throwIfAborted()
-    const setup = (childCtx: Context): AgentSetupCommit => {
+    const setup = async (childCtx: Context): Promise<AgentSetupCommit> => {
       // Only fresh creation seeds the delegation policy onto the child's own
       // log (after any fork seed, so fresh policy wins stale seed state); a
       // cold resume replays those persisted events instead.
       if (create !== undefined) {
         appendDelegatedPolicyOverrides((childCtx.agent as Agent).session, create.delegatedPolicies)
       }
-      applyChildComposition(childCtx, parent, inputs.composition)
+      await applyChildComposition(childCtx, parent, inputs.composition)
       return this.setupRegistry.apply(childCtx)
     }
     const observer = this.host.observeActivation(provider, childId, parent)

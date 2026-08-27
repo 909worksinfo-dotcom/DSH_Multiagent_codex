@@ -11,6 +11,7 @@ import { CallId } from '@deepseek-ai/dsh-llm'
 import { canonicalPath, writableRoots } from '@deepseek-ai/dsh-sandbox'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { TeamOrchestrationRequestId } from '@deepseek-ai/dsh-team-orchestrator'
 // Empty type imports carry the tools/sandboxPolicy/approval Context merges.
 import type {} from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-sandbox-policy'
@@ -181,6 +182,65 @@ it('assembles the shipped Web catalog, file-reference guidance, retry policy, an
     })
   } finally {
     await commandHandle.dispose()
+  }
+}, 120_000)
+
+it('forms a shipped P5 team whose controller, ledgers, gates, and market discovery compose together', async () => {
+  scaffold = await launchWebScaffold({ deepSeekMissingCredential: true })
+  const ctx = scaffold.ctx
+  const lead = await ctx.agents.create({
+    sessionId: SessionId('shipped-p3-formation'),
+    meta: { cwd: scaffold.workspaceCwd },
+    agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+    setup: agentCtx => ctx.agentPresets.mount(agentCtx).then(() => undefined),
+  })
+  try {
+    const formed = await ctx.teamOrchestrator.orchestrate(lead.agent, {
+      requestId: TeamOrchestrationRequestId('shipped-p3-simple'),
+      objective: 'Research and summarize this capability in three points',
+      domain: 'research_analysis',
+    }, new AbortController().signal)
+    expect(formed.run).toMatchObject({
+      complexity: 'simple',
+      phase: 'active',
+      plannedExperts: 3,
+      expertCounts: { active: 3, planned: 3 },
+      tasks: [{ id: 'task-1', status: 'pending', ready: true, blockedBy: [] }],
+      protocol: {
+        mode: 'enforced',
+        topology: 'producer_reviewer',
+        limits: { maxChallengeRounds: 1 },
+        challenges: [],
+      },
+      artifacts: [],
+      decisions: [],
+      controller: { health: 'healthy', recommendedActions: [] },
+    })
+    expect(formed.run.protocol.members).toHaveLength(3)
+    expect(formed.run.protocol.members.every(member => member.phase === 'active' && member.usedMessages === 0)).toBe(true)
+    expect(formed.plan?.roster).toHaveLength(3)
+    expect(formed.plan?.roster.every(expert => expert.skillDiscovery?.providers.length === 3)).toBe(true)
+    expect(formed.run.qualityGates.length).toBeGreaterThan(0)
+    expect(formed.run.qualityGates.map(gate => gate.name)).toEqual(formed.charter?.qualityChecks)
+    expect(formed.run.qualityGates.every(gate => gate.status === 'pending')).toBe(true)
+    expect(ctx.tools.schemas(lead.agent).map(schema => schema.name)).toEqual(expect.arrayContaining([
+      'collaboration_artifact_read',
+      'collaboration_artifact_write',
+      'collaboration_complete',
+      'collaboration_control',
+      'collaboration_controller_get',
+      'collaboration_decision_write',
+      'collaboration_quality_update',
+    ]))
+    const childId = formed.run.members[0]?.sessionId
+    expect(childId).toBeDefined()
+    const storedChild = childId === undefined ? undefined : await ctx.sessionPersistence.inspect(childId)
+    expect(storedChild?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'collaboration/expert/descriptor' }),
+      expect.objectContaining({ type: 'user/message' }),
+    ]))
+  } finally {
+    await lead.dispose()
   }
 }, 120_000)
 

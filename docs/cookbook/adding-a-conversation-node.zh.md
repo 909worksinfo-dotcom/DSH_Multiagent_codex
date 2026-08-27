@@ -197,6 +197,8 @@ export function apply(ctx: ClientContext): void {
 
 `buildLocationData(context, scope)` 可以把 Definition 拥有的数据发布到引擎拥有的 Turn 或 Step 上。通过 declaration merging 为每个 key 指定精确 value 类型。同一 Location 内的另一个 Node 可以使用受限 slot hook（例如 `useTurnData(key)`）读取该值，无须取得 Session，也无须扫描 `snapshot.chat.nodes`。
 
+Definition 可以为低优先级过程节点设置 `flow: 'activity'`。`ChatSnapshotBuilder` 会把连续选择加入的节点组合成限高可滚动的 activity 区域；普通节点会分隔前后区域。只能依据业务语义选择加入。正文、图片、错误、重试、命令、待处理交互及其他需要占用完整文本记录空间的产出仍使用普通节点。`flow` 变化属于结构变化，但节点的稳定 key 保持不变。
+
 `target` 与 `buildViewNode(context)` 必须同时声明一项由 target 拥有的渲染贡献。把 `context.key` 保留为 React 侧身份，根据持久排序证据选择 `anchorSeq`，并且只返回 renderer 可以直接使用的数据。某个 target Node 一旦发布，就要继续返回同一个 key；需要暂时离开可见流时使用 `visibility: 'hidden'`，不要改为返回 `null` 撤回它。
 
 ## 3. 只在 start 时查询更早的业务 Context

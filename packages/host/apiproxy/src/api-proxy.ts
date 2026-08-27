@@ -11,18 +11,38 @@ import type { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import type { Agent, ModelSelection, ModelSelectionRef, AgentOptions, AgentStatus } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-agent-presets/types'
+import {
+  TeamArtifactId,
+  TeamChallengeId,
+  TeamDecisionId,
+  TeamRunError,
+  TeamTaskId,
+  TeamThreadId,
+  type PublicCollaborationMessage,
+  type PublicCollaborationReferences,
+  type TeamActorRef,
+  type TeamFailure,
+} from '@deepseek-ai/dsh-agent-team'
 import { AttachmentError, admitEncodedImages } from '@deepseek-ai/dsh-attachment'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { contentHasImage, createUserMessage, freezeMessage, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { errorChain } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, MessageSource } from '@deepseek-ai/dsh-llm'
-import { isAppendSurfaceEvent, isJsonValue } from '@deepseek-ai/dsh-session'
+import { isAppendSurfaceEvent, isJsonValue, SessionId as brandSessionId } from '@deepseek-ai/dsh-session'
 import type { JsonValue, Session, SessionEvent, SessionEventMap, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { SessionQueryError, type SessionSearchCursor } from '@deepseek-ai/dsh-session-query'
 import { SubagentError } from '@deepseek-ai/dsh-subagent'
 import type { SubagentListEntry as CatalogSubagentListEntry } from '@deepseek-ai/dsh-subagent'
 import { isUserInvocable } from '@deepseek-ai/dsh-skill'
+import type { ExpertBlueprint } from '@deepseek-ai/dsh-expert-catalog'
+import { foldExpertBindings, type ExpertBindingEventData } from '@deepseek-ai/dsh-expert-runtime'
+import {
+  TeamOrchestrationRequestId,
+  type CreateTeamOrchestrationRequest,
+  type TeamOrchestrationSnapshot,
+  type TeamWorkstream,
+} from '@deepseek-ai/dsh-team-orchestrator'
 import type { Workspace, WorkspaceRecord } from '@deepseek-ai/dsh-workspace'
 import {
   workspaceDomainState, workspaceRecord, WorkspaceId as brandWorkspaceId,
@@ -36,7 +56,11 @@ import {
 import type { PresetBearingSession } from '@deepseek-ai/dsh-agent-presets'
 import type {} from '@deepseek-ai/dsh-tools'
 import type {
-  ApiProxy, ConfigurableProviderView, CredentialView, GoalRef, HistoryEntry, HostFrame,
+  ApiProxy, CollaborationActorView, CollaborationCharterView, CollaborationExpertBindingView,
+  CollaborationArtifactRecordView, CollaborationExpertView, CollaborationFailureView, CollaborationRunView,
+  CollaborationPublicEventView, CollaborationPublicReferencesView,
+  CollaborationTaskProfileView, CollaborationWorkstreamView,
+  ConfigurableProviderView, CredentialView, GoalRef, HistoryEntry, HostFrame,
   ModelCatalogFailure, ModelProviderGroup,
   ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
   QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
@@ -1939,6 +1963,398 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     return ok(request, namespaceView(descriptor))
   }
 
+  /** Project one normalized workstream without exposing orchestration-only state. */
+  function collaborationWorkstream(value: TeamWorkstream): CollaborationWorkstreamView {
+    return {
+      id: value.id,
+      subject: value.subject,
+      description: value.description,
+      blockedBy: [...value.blockedBy],
+      requiredCapabilities: [...value.requiredCapabilities],
+      resourceScopes: [...value.resourceScopes],
+    }
+  }
+
+  /** Retain only low-cardinality diagnostics that cannot carry paths, prompts, or hashes. */
+  function publicFailureDetails(details: TeamFailure['details']): CollaborationFailureView['details'] {
+    const allowed = new Set(['causeCode', 'phase', 'attemptNumber', 'plannedExperts'])
+    return Object.fromEntries(Object.entries(details).filter(([key]) => allowed.has(key)))
+  }
+
+  /** Stable product copy for durable collaboration failures; causal messages stay host-local. */
+  function collaborationFailure(failure: TeamFailure): CollaborationFailureView {
+    const messages: Readonly<Record<string, string>> = {
+      FORMATION_FAILED: 'The expert team could not be formed at full strength.',
+      CAPABILITY_UNAVAILABLE: 'A required expert capability is unavailable.',
+      BLUEPRINT_REVISION_MISMATCH: 'An expert capability binding changed before activation.',
+      TEAM_CANCELLED: 'Team formation was cancelled.',
+      TEAM_MEMBER_LIMIT: 'The requested expert team exceeds the configured member limit.',
+      TEAM_PROVISION_ATTEMPT_LIMIT: 'The team exhausted its expert provisioning attempts.',
+    }
+    return {
+      code: failure.code,
+      message: messages[failure.code] ?? 'The collaboration run could not continue.',
+      retryable: failure.retryable,
+      details: publicFailureDetails(failure.details),
+    }
+  }
+
+  /** Project one authoritative actor without exposing provider or prompt state. */
+  function collaborationActor(actor: TeamActorRef): CollaborationActorView {
+    return actor.role === 'lead'
+      ? { role: 'lead', sessionId: brandSessionId(String(actor.sessionId)), name: 'lead' }
+      : {
+        role: 'expert',
+        memberId: String(actor.memberId),
+        sessionId: brandSessionId(String(actor.sessionId)),
+        name: actor.name,
+      }
+  }
+
+  /** Map typed core references to their browser-safe string representation. */
+  function collaborationReferences(references: PublicCollaborationReferences): CollaborationPublicReferencesView {
+    return {
+      ...references.taskId === undefined ? {} : { taskId: String(references.taskId) },
+      ...references.challengeId === undefined ? {} : { challengeId: String(references.challengeId) },
+      ...references.decisionId === undefined ? {} : { decisionId: String(references.decisionId) },
+      ...references.artifactId === undefined ? {} : { artifactId: String(references.artifactId) },
+    }
+  }
+
+  /** Convert browser-safe relations back to exact TeamRun brands after schema validation. */
+  function collaborationReferenceInput(references: CollaborationPublicReferencesView | undefined): PublicCollaborationReferences {
+    return {
+      ...references?.taskId === undefined ? {} : { taskId: TeamTaskId(references.taskId) },
+      ...references?.challengeId === undefined ? {} : { challengeId: TeamChallengeId(references.challengeId) },
+      ...references?.decisionId === undefined ? {} : { decisionId: TeamDecisionId(references.decisionId) },
+      ...references?.artifactId === undefined ? {} : { artifactId: TeamArtifactId(references.artifactId) },
+    }
+  }
+
+  /** Project one retained public event; model-private reasoning cannot enter this type. */
+  function collaborationPublicEvent(message: PublicCollaborationMessage): CollaborationPublicEventView {
+    return {
+      id: String(message.id),
+      eventId: String(message.eventId),
+      cursor: message.sequence,
+      threadId: String(message.threadId),
+      kind: message.kind,
+      author: collaborationActor(message.author),
+      targets: message.targets.map(collaborationActor),
+      references: collaborationReferences(message.references),
+      content: message.content,
+      createdAt: message.createdAt,
+      visibility: 'public',
+    }
+  }
+
+  /** Render one safe immutable binding from either a plan or a committed runtime binding. */
+  function collaborationBinding(
+    blueprint: ExpertBlueprint,
+    binding?: ExpertBindingEventData,
+    plannedMarketplaceSkills: readonly import('@deepseek-ai/dsh-skill-marketplace').SkillMarketplaceCapability[] = [],
+    plannedMarketplaceProviders: readonly Pick<import('@deepseek-ai/dsh-skill-marketplace').SkillMarketplaceProviderResult, 'source' | 'state'>[] = [],
+  ): CollaborationExpertBindingView {
+    const descriptor = binding?.descriptor
+    const preset = descriptor?.preset.id ?? blueprint.preset
+    const skills = descriptor?.skills.map(value => value.name) ?? blueprint.skills
+    const plugins = descriptor?.plugins ?? blueprint.plugins
+    return {
+      blueprint: {
+        id: String(descriptor?.blueprint.id ?? blueprint.ref.id),
+        revision: descriptor?.blueprint.revision ?? blueprint.ref.revision,
+      },
+      preset: { id: preset, label: preset },
+      skills: skills.map(id => ({ id, label: id })),
+      marketplaceProviders: plannedMarketplaceProviders.map(value => ({ ...value })),
+      marketplaceSkills: (descriptor?.marketplaceSkills ?? plannedMarketplaceSkills).map(value => ({
+        id: value.id,
+        label: value.name,
+        source: value.source,
+        kind: value.kind,
+        status: value.status,
+        ...value.access === undefined ? {} : { access: value.access },
+      })),
+      plugins: plugins.map(id => ({ id, label: id })),
+    }
+  }
+
+  /** Resolve the optional P3 orchestration capability for collaboration methods. */
+  function collaborationOrchestrator(): NonNullable<ReturnType<typeof ctx.get<'teamOrchestrator'>>> {
+    const service = ctx.get('teamOrchestrator')
+    if (service === undefined) {
+      throw new TeamRunError('team orchestration is unavailable in this deployment', 'CAPABILITY_UNAVAILABLE')
+    }
+    return service
+  }
+
+  /** Resolve the stable TeamRun authority used by execution, public messages, and delivery. */
+  function collaborationTeamRuns(): NonNullable<ReturnType<typeof ctx.get<'teamRuns'>>> {
+    const service = ctx.get('teamRuns')
+    if (service === undefined) {
+      throw new TeamRunError('team execution is unavailable in this deployment', 'CAPABILITY_UNAVAILABLE')
+    }
+    return service
+  }
+
+  /** Resolve the optional immutable blueprint catalog for safe roster projection. */
+  function collaborationCatalog(): NonNullable<ReturnType<typeof ctx.get<'expertCatalog'>>> {
+    const service = ctx.get('expertCatalog')
+    if (service === undefined) {
+      throw new TeamRunError('expert catalog is unavailable in this deployment', 'CAPABILITY_UNAVAILABLE')
+    }
+    return service
+  }
+
+  /** Convert one durable P3 projection into the complete browser allowlist. */
+  function collaborationView(lead: Agent, snapshot: TeamOrchestrationSnapshot): CollaborationRunView {
+    const bindings = new Map(
+      foldExpertBindings(snapshot.run.id, lead.session.events).map(value => [value.attemptId, value]),
+    )
+    const experts: CollaborationExpertView[] = (snapshot.plan?.roster ?? []).map((planned) => {
+      const member = snapshot.run.members.find(value => value.name === planned.name)
+      const blueprint = collaborationCatalog().get(planned.blueprint)
+      const binding = member === undefined ? undefined : bindings.get(member.attemptId)
+      return {
+        id: member === undefined ? String(planned.slotId) : String(member.id),
+        sessionId: member === undefined ? null : brandSessionId(String(member.sessionId)),
+        name: planned.name,
+        role: planned.role,
+        phase: member?.phase ?? 'planned',
+        binding: collaborationBinding(
+          blueprint,
+          binding,
+          planned.skillDiscovery?.mounts ?? [],
+          planned.skillDiscovery?.providers ?? [],
+        ),
+        ...member?.failure === undefined ? {} : { failure: collaborationFailure(member.failure) },
+      }
+    })
+    const profile: CollaborationTaskProfileView = {
+      domain: snapshot.profile.domain,
+      objective: snapshot.profile.objective,
+      successCriteria: [...snapshot.profile.successCriteria],
+      workstreams: snapshot.profile.workstreams.map(collaborationWorkstream),
+      riskSignals: [...snapshot.profile.riskSignals],
+      complexity: snapshot.profile.complexity,
+      plannedExperts: snapshot.profile.plannedExperts,
+      metrics: { ...snapshot.profile.metrics },
+    }
+    const charter: CollaborationCharterView | null = snapshot.charter === undefined
+      ? null
+      : {
+        objective: snapshot.charter.objective,
+        successCriteria: [...snapshot.charter.successCriteria],
+        topology: snapshot.charter.topology,
+        taskDag: snapshot.charter.taskDag.map(collaborationWorkstream),
+        communication: { ...snapshot.charter.communication },
+        qualityChecks: [...snapshot.charter.qualityChecks],
+        budgets: snapshot.charter.budgets.map(value => ({
+          slotId: String(value.slotId),
+          maxTurns: value.execution.maxTurns,
+          maxTokens: value.execution.maxTokens,
+          timeoutMs: value.execution.timeoutMs,
+        })),
+        termination: { ...snapshot.charter.termination },
+      }
+    const title = snapshot.profile.context['productTitle']?.trim() || snapshot.profile.objective
+    const language = snapshot.profile.context['productLanguage'] === 'en'
+      ? 'en' as const
+      : snapshot.profile.context['productLanguage'] === 'zh' || /\p{Script=Han}/u.test(title)
+        ? 'zh' as const
+        : 'en' as const
+    const tasks = snapshot.run.tasks.map((task) => {
+      if (task.status === 'deleted') throw new Error('TeamRun snapshot exposed a deleted task')
+      return {
+        id: String(task.id),
+        revision: task.revision,
+        subject: task.subject,
+        description: task.description,
+        status: task.status,
+        owner: task.owner === undefined ? null : collaborationActor(task.owner),
+        blockedBy: task.blockedBy.map(String),
+        resourceScopes: [...task.resourceScopes],
+        ready: task.ready,
+        resourceConflicts: task.resourceConflicts.map(String),
+      }
+    })
+    return {
+      id: brandSessionId(String(snapshot.run.id)),
+      requestId: String(snapshot.requestId),
+      ...snapshot.retryOf === undefined ? {} : { retryOf: String(snapshot.retryOf) },
+      title,
+      objective: snapshot.profile.objective,
+      language,
+      createdAt: snapshot.createdAt,
+      status: snapshot.run.status,
+      phase: snapshot.run.phase,
+      cursor: snapshot.run.cursor,
+      profile,
+      charter,
+      lead: { sessionId: brandSessionId(String(snapshot.run.lead.sessionId)), name: 'lead', role: 'Lead Agent' },
+      experts,
+      expertCounts: { ...snapshot.run.expertCounts },
+      tasks,
+      artifacts: snapshot.run.artifacts.map(artifact => ({
+        id: String(artifact.id),
+        version: artifact.version,
+        kind: artifact.kind,
+        title: artifact.title,
+        status: artifact.status,
+        author: collaborationActor(artifact.author),
+        taskIds: artifact.taskIds.map(String),
+        mediaType: artifact.mediaType,
+        updatedAt: artifact.updatedAt,
+      })),
+      decisions: snapshot.run.decisions.map(decision => ({
+        id: String(decision.id),
+        version: decision.version,
+        subject: decision.subject,
+        outcome: decision.outcome,
+        summary: decision.summary,
+        rationale: decision.rationale,
+        taskIds: decision.taskIds.map(String),
+        artifactIds: decision.artifactIds.map(String),
+        lead: collaborationActor(decision.lead),
+        createdAt: decision.createdAt,
+      })),
+      qualityGates: snapshot.run.qualityGates.map(gate => ({
+        id: String(gate.id),
+        version: gate.version,
+        name: gate.name,
+        status: gate.status,
+        ...gate.reviewer === undefined ? {} : { reviewer: collaborationActor(gate.reviewer) },
+        ...gate.taskId === undefined ? {} : { taskId: String(gate.taskId) },
+        ...gate.artifactId === undefined ? {} : { artifactId: String(gate.artifactId) },
+        summary: gate.summary,
+        updatedAt: gate.updatedAt,
+      })),
+      controller: {
+        ...structuredClone(snapshot.run.controller),
+        stalledTaskIds: snapshot.run.controller.stalledTaskIds.map(String),
+        recommendedActions: [...snapshot.run.controller.recommendedActions],
+        actionsTaken: snapshot.run.controller.actionsTaken.map(String),
+      },
+      protocol: {
+        mode: snapshot.run.protocol.mode,
+        topology: snapshot.run.protocol.topology,
+        limits: structuredClone(snapshot.run.protocol.limits),
+        members: snapshot.run.protocol.members.map(member => ({
+          slotId: String(member.slotId),
+          memberId: member.memberId === null ? null : String(member.memberId),
+          name: member.name,
+          phase: member.phase,
+          permissions: structuredClone(member.permissions),
+          allowedTargets: [...member.allowedTargets],
+          usedMessages: member.usedMessages,
+          remainingMessages: member.remainingMessages,
+        })),
+        challenges: snapshot.run.protocol.challenges.map(challenge => ({
+          challengeId: String(challenge.challengeId),
+          threadId: String(challenge.threadId),
+          round: challenge.round,
+          challenger: challenge.challenger,
+          target: challenge.target,
+          status: challenge.status,
+          challengeMessageId: String(challenge.challengeMessageId),
+          responseMessageId: challenge.responseMessageId === null ? null : String(challenge.responseMessageId),
+        })),
+      },
+      progress: {
+        total: tasks.length,
+        ready: tasks.filter(task => task.ready).length,
+        inProgress: tasks.filter(task => task.status === 'in_progress').length,
+        completed: tasks.filter(task => task.status === 'completed').length,
+        blocked: tasks.filter(task => task.status === 'pending' && !task.ready).length,
+        messageCount: snapshot.run.messages.length,
+        artifactCount: snapshot.run.artifacts.length,
+        decisionCount: snapshot.run.decisions.length,
+        qualityGatePending: snapshot.run.qualityGates.filter(gate => gate.status === 'pending').length,
+        qualityGatePassed: snapshot.run.qualityGates.filter(gate => gate.status === 'passed').length,
+        qualityGateFailed: snapshot.run.qualityGates.filter(gate => gate.status === 'failed').length,
+      },
+      ...snapshot.run.failure === undefined ? {} : { failure: collaborationFailure(snapshot.run.failure) },
+    }
+  }
+
+  /** Convert an orchestration-domain refusal into the public RPC vocabulary. */
+  function collaborationError(
+    request: RpcRequest<unknown>,
+    error: unknown,
+    runId?: SessionId,
+  ): RpcResponse<never> {
+    if (error instanceof TeamRunError) {
+      return err(request, {
+        code: 'collaboration-error',
+        message: error.code === 'TEAM_INVALID_ARGUMENT'
+          ? error.message
+          : 'The collaboration request could not be completed.',
+        details: {
+          collaborationCode: error.code,
+          retryable: error.retryable,
+          ...runId === undefined ? {} : { runId },
+        },
+      })
+    }
+    return err(request, {
+      code: 'internal',
+      message: 'The collaboration service encountered an internal error.',
+      details: {},
+    })
+  }
+
+  /** Return a committed terminal snapshot when formation itself failed after profiling. */
+  function terminalCollaborationView(lead: Agent): CollaborationRunView | undefined {
+    try {
+      const snapshot = collaborationOrchestrator().get(lead)
+      return snapshot.run.phase === 'formation_failed'
+        || snapshot.run.phase === 'failed'
+        || snapshot.run.phase === 'cancelled'
+        ? collaborationView(lead, snapshot)
+        : undefined
+    } catch {
+      // Only the absence of a committed profile is intentionally treated as no terminal result.
+      return undefined
+    }
+  }
+
+  /** Resolve every live and cold Lead that contains a durable orchestration profile. */
+  async function collaborationLeads(): Promise<Agent[]> {
+    const found = new Map<SessionId, Agent>()
+    for (const snapshot of collaborationOrchestrator().list()) {
+      const lead = ctx.agents.get(brandSessionId(String(snapshot.run.id)))
+      if (lead !== undefined) found.set(lead.id, lead)
+    }
+    const candidates = (await listVisibleSessionSummaries()).filter(summary =>
+      !found.has(summary.sessionId) && summary.parentSessionId === undefined)
+    for (let offset = 0; offset < candidates.length; offset += COLD_SUMMARY_BATCH_SIZE) {
+      const batch = candidates.slice(offset, offset + COLD_SUMMARY_BATCH_SIZE)
+      const profileOwners = await Promise.all(batch.map(async (summary) => {
+        let source: HistorySource
+        try {
+          source = await historySourceFor(summary.sessionId)
+        } catch (error: unknown) {
+          // A session deleted between list and inspect is absent from this point-in-time result.
+          // Format and corruption refusals are not absence: surfacing them keeps an incompatible
+          // durable TeamRun from being misreported as an empty collaboration list after restart.
+          if (error instanceof SessionNotFound) return undefined
+          throw error
+        }
+        const session = sourceSession(source)
+        return session.header.parentSession === undefined
+          && session.events.some(event => event.type === 'collaboration/orchestration/profile')
+          ? summary.sessionId
+          : undefined
+      }))
+      for (const sessionId of profileOwners) {
+        if (sessionId === undefined) continue
+        const resolved = await agentFor(sessionId)
+        if (!('error' in resolved)) found.set(resolved.agent.id, resolved.agent)
+      }
+    }
+    return [...found.values()]
+  }
+
   return {
     sessions: {
       // Attached sessions summarize from memory; persisted-but-unattached (cold)
@@ -2712,6 +3128,207 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           }))
         }
         return Promise.resolve(ok(request, { accepted: true as const }))
+      },
+    },
+
+    collaboration: {
+      async create(request, signal) {
+        const { payload } = request
+        const found = await agentFor(payload.leadSessionId)
+        if ('error' in found) return err(request, found.error)
+        const lead = found.agent
+        if (!sessionBlank(lead.session)) {
+          return collaborationError(
+            request,
+            new TeamRunError('Lead Session must not have started a model turn', 'TEAM_INVALID_TRANSITION'),
+            lead.id,
+          )
+        }
+        const orchestration: CreateTeamOrchestrationRequest = {
+          requestId: TeamOrchestrationRequestId(payload.requestId),
+          ...payload.retryOf === undefined
+            ? {}
+            : { retryOf: TeamOrchestrationRequestId(payload.retryOf) },
+          objective: payload.objective,
+          ...payload.domain === undefined ? {} : { domain: payload.domain },
+          ...payload.successCriteria === undefined
+            ? {}
+            : { successCriteria: [...payload.successCriteria] },
+          ...payload.workstreams === undefined
+            ? {}
+            : {
+              workstreams: payload.workstreams.map(value => ({
+                id: value.id,
+                subject: value.subject,
+                description: value.description,
+                ...value.blockedBy === undefined ? {} : { blockedBy: [...value.blockedBy] },
+                ...value.requiredCapabilities === undefined
+                  ? {}
+                  : { requiredCapabilities: [...value.requiredCapabilities] },
+                ...value.resourceScopes === undefined ? {} : { resourceScopes: [...value.resourceScopes] },
+              })),
+            },
+          ...payload.riskSignals === undefined ? {} : { riskSignals: [...payload.riskSignals] },
+          context: {
+            productTitle: payload.title,
+            productLanguage: payload.language,
+          },
+        }
+        try {
+          return ok(request, collaborationView(
+            lead,
+            await collaborationOrchestrator().orchestrate(lead, orchestration, signal),
+          ))
+        } catch (error: unknown) {
+          const terminal = terminalCollaborationView(lead)
+          if (terminal !== undefined) return ok(request, terminal)
+          if (signal.aborted) {
+            return err(request, { code: 'cancelled', message: 'Team formation was cancelled.', details: {} })
+          }
+          return collaborationError(request, error, lead.id)
+        }
+      },
+
+      async list(request) {
+        try {
+          const views = (await collaborationLeads())
+            .map(lead => collaborationView(lead, collaborationOrchestrator().get(lead)))
+            .sort((left, right) => right.createdAt - left.createdAt)
+          return ok(request, { runs: views })
+        } catch (error: unknown) {
+          return collaborationError(request, error)
+        }
+      },
+
+      async get(request) {
+        const found = await agentFor(request.payload.runId)
+        if ('error' in found) return err(request, found.error)
+        try {
+          return ok(request, collaborationView(found.agent, collaborationOrchestrator().get(found.agent)))
+        } catch (error: unknown) {
+          return collaborationError(request, error, found.agent.id)
+        }
+      },
+
+      async readArtifact(request) {
+        const found = await agentFor(request.payload.runId)
+        if ('error' in found) return err(request, found.error)
+        try {
+          collaborationOrchestrator().get(found.agent)
+          const artifact = collaborationTeamRuns().readArtifact(
+            found.agent,
+            TeamArtifactId(request.payload.artifactId),
+          )
+          const value: CollaborationArtifactRecordView = {
+            id: String(artifact.id),
+            version: artifact.version,
+            kind: artifact.kind,
+            title: artifact.title,
+            status: artifact.status,
+            author: collaborationActor(artifact.author),
+            taskIds: artifact.taskIds.map(String),
+            mediaType: artifact.mediaType,
+            updatedAt: artifact.updatedAt,
+            body: artifact.body,
+          }
+          return ok(request, value)
+        } catch (error: unknown) {
+          return collaborationError(request, error, found.agent.id)
+        }
+      },
+
+      async events(request) {
+        const found = await agentFor(request.payload.runId)
+        if ('error' in found) return err(request, found.error)
+        try {
+          const run = collaborationOrchestrator().get(found.agent).run
+          const afterCursor = request.payload.afterCursor ?? -1
+          if (!Number.isSafeInteger(afterCursor) || afterCursor < -1 || afterCursor > run.cursor) {
+            throw new TeamRunError(
+              `afterCursor must be between -1 and the current cursor ${String(run.cursor)}`,
+              'TEAM_INVALID_ARGUMENT',
+            )
+          }
+          const limit = request.payload.limit ?? 50
+          const remaining = run.messages.filter(message => message.sequence > afterCursor)
+          const selected = remaining.slice(0, limit)
+          const hasMore = remaining.length > selected.length
+          return ok(request, {
+            events: selected.map(collaborationPublicEvent),
+            hasMore,
+            nextCursor: hasMore ? selected.at(-1)?.sequence ?? afterCursor : run.cursor,
+          })
+        } catch (error: unknown) {
+          return collaborationError(request, error, found.agent.id)
+        }
+      },
+
+      async send(request) {
+        const found = await agentFor(request.payload.runId)
+        if ('error' in found) return err(request, found.error)
+        try {
+          collaborationOrchestrator().get(found.agent)
+          const message = await collaborationTeamRuns().publishMessage(found.agent, {
+            kind: request.payload.kind,
+            threadId: TeamThreadId(request.payload.threadId),
+            ...request.payload.targets === undefined ? {} : { targets: [...request.payload.targets] },
+            references: collaborationReferenceInput(request.payload.references),
+            content: request.payload.content,
+          })
+          return ok(request, collaborationPublicEvent(message))
+        } catch (error: unknown) {
+          return collaborationError(request, error, found.agent.id)
+        }
+      },
+
+      async complete(request) {
+        const found = await agentFor(request.payload.runId)
+        if ('error' in found) return err(request, found.error)
+        try {
+          collaborationOrchestrator().get(found.agent)
+          await collaborationTeamRuns().completeRun(found.agent, {
+            threadId: TeamThreadId(request.payload.threadId),
+            references: collaborationReferenceInput(request.payload.references),
+            content: request.payload.content,
+          })
+          return ok(request, collaborationView(found.agent, collaborationOrchestrator().get(found.agent)))
+        } catch (error: unknown) {
+          return collaborationError(request, error, found.agent.id)
+        }
+      },
+
+      async retryFormation(request, signal) {
+        const found = await agentFor(request.payload.runId)
+        if ('error' in found) return err(request, found.error)
+        try {
+          return ok(request, collaborationView(
+            found.agent,
+            await collaborationOrchestrator().retry(found.agent, {
+              requestId: TeamOrchestrationRequestId(request.payload.requestId),
+            }, signal),
+          ))
+        } catch (error: unknown) {
+          if (signal.aborted) {
+            return err(request, { code: 'cancelled', message: 'Team formation retry was cancelled.', details: {} })
+          }
+          return collaborationError(request, error, found.agent.id)
+        }
+      },
+
+      async cancel(request) {
+        const found = await agentFor(request.payload.runId)
+        if ('error' in found) return err(request, found.error)
+        try {
+          return ok(request, collaborationView(
+            found.agent,
+            await collaborationOrchestrator().cancel(found.agent, {
+              requestId: TeamOrchestrationRequestId(request.payload.requestId),
+              reason: request.payload.reason,
+            }),
+          ))
+        } catch (error: unknown) {
+          return collaborationError(request, error, found.agent.id)
+        }
       },
     },
 

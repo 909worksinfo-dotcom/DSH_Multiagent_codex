@@ -226,6 +226,26 @@ describe('deriveFlat', () => {
     expect(rows.map(row => row.id)).toEqual([fork.id, parent.id])
   })
 
+  it('keeps collaboration Lead sessions out of everyday lists and search', () => {
+    const daily = summary('daily-session', 1)
+    daily.displayTitle = 'Daily session'
+    const collaboration = summary('collaboration-lead-run-one', 2)
+    collaboration.displayTitle = 'Collaboration · Internal Lead'
+    const sessions = list(daily, collaboration)
+
+    expect(deriveFlat(sessions, noArchive).map(row => row.id)).toEqual([daily.id])
+    expect(deriveGroups(sessions, [], noArchive, view([UNGROUPED_KEY]))[0]?.sessions.map(row => row.id))
+      .toEqual([daily.id])
+    expect(deriveSearchResults(
+      sessions,
+      [],
+      'collaboration',
+      noArchive,
+      { items: [{ sessionId: collaboration.id, snippet: 'internal team content' }], hasMore: false },
+      20,
+    ).items).toEqual([])
+  })
+
   it('tolerates ids whose summary has not landed yet', () => {
     const partial: SessionListState = { ...list(summary('present', 1)), ids: [sid('ghost'), sid('present')] }
     expect(deriveFlat(partial, noArchive).map(row => row.id)).toEqual([sid('present')])

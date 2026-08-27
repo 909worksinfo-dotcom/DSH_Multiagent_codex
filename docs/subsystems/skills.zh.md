@@ -2,9 +2,21 @@
 
 [English](skills.md) | 中文
 
-[skill（技能）能力族](../../packages/skill) 包含 Service Definition（[dsh-skill](../../packages/skill/skill)，`ctx.skills`）、本地 Service Provider（[dsh-skill-filesystem](../../packages/skill/skill-filesystem)）、可选的随包徽章提供方（[dsh-skill-badge](../../packages/skill/skill-badge)）和 Consumer（[dsh-tool-skill](../../packages/skill/tool-skill)）。注册表在其宿主层与各 scope 层之间合并各提供方的目录；提供方贡献本地或随包 skill；Consumer 拥有初始目录和替换目录，以及面向模型的 `skill` 工具。skill 是可选的指令而非会话事件，因此其词汇定义在此处而非 [core.md](core.md)。
+[skill（技能）能力族](../../packages/skill) 包含 Service Definition（[dsh-skill](../../packages/skill/skill)，`ctx.skills`）、本地 Service Provider（[dsh-skill-filesystem](../../packages/skill/skill-filesystem)）、任务级市场发现服务（[dsh-skill-marketplace](../../packages/skill/skill-marketplace)，`ctx.skillMarketplace`）、可选的随包徽章提供方（[dsh-skill-badge](../../packages/skill/skill-badge)）和 Consumer（[dsh-tool-skill](../../packages/skill/tool-skill)）。注册表在其宿主层与各 scope 层之间合并各提供方的目录；提供方贡献本地或随包 skill；Consumer 拥有初始目录和替换目录，以及面向模型的 `skill` 工具。skill 是可选的指令而非会话事件，因此其词汇定义在此处而非 [core.md](core.md)
 
-源码：[`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)、[`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts)、[`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts) 与 [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)。
+源码：[`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts)、[`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts)、[`packages/skill/skill-marketplace/src/index.ts`](../../packages/skill/skill-marketplace/src/index.ts)、[`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts) 与 [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)
+
+## 任务级市场发现
+
+`ctx.skillMarketplace.search()` 会并发观察 Smithery、Composio 与 skills.sh，但不会注册环境级 skill 或 tool。每个 provider 结果会独立保留就绪状态，让调用方能够区分可用方法、待授权与故障。服务返回分离的规划值；[自动组队](../../.agents/notes/implemented/feature/2026-08-27-task-bound-skill-marketplace-discovery.md)负责选择、持久化和 child 作用域挂载
+
+```ts type-equiv
+/** Complete multi-market discovery result. */
+interface SkillMarketplaceSearchResult {
+  readonly query: string
+  readonly providers: readonly SkillMarketplaceProviderResult[]
+}
+```
 
 ## 提供方注册表
 
@@ -241,6 +253,24 @@ interface Config {
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — this section is byte-identical in both language sides of the page. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxskillmarketplace--skillmarketplace"></a>
+
+### `ctx.skillMarketplace` — `SkillMarketplace`
+
+Public marketplace search used by automatic team formation.
+
+```ts cordis-catalog
+/**
+ * Search all first-wave providers without letting one outage suppress the others.
+ * @param rawQuery - expert capability query.
+ * @param signal - caller cancellation.
+ * @returns ordered provider observations and bounded candidates.
+ */
+async search(rawQuery: string, signal?: AbortSignal): Promise<SkillMarketplaceSearchResult>
+```
+
+Source: [`packages/skill/skill-marketplace/src/index.ts:122`](../../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="ctxskills--skillregistry"></a>
 

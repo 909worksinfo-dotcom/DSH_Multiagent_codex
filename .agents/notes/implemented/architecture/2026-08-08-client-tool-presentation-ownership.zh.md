@@ -20,7 +20,7 @@ Conversation 数据组装遵循后续的 [Conversation 业务节点决策](2026-
 
 业务工具插件接收一个标准 `ToolCallBlock`、identity、workspace cwd 和宿主动作，不读取会话、上下文或 Conversation assembler。skill（技能）仍是普通工具；它和其他业务工具使用同一 keyed slot 注册路径。
 
-details panel 是第二个工具展示点，但不是调用树所有者。`ui-conversation` 定位 selected call，并通过 `'conversation.details.tool'` 委托 output body；`ui-tool` 复用 card model，插件缺席时 conversation fallback 保留 raw result text。
+工具 Definition 会在轮次开放期间发布所有 root；轮次关闭后则移除执行行，仅保留 `todo_write`，使任务清单摘要继续显示在 Chat 中。details panel 是第二个工具展示点，但不是调用树所有者。`ui-conversation` 定位 selected call，并通过 `'conversation.details.tool'` 委托 output body；`ui-tool` 复用 card model，插件缺席时 conversation fallback 保留 raw result text。
 
 ## 运行时与渲染路径
 

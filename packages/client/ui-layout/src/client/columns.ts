@@ -16,6 +16,9 @@
 /** Resolved widths for one frame; center may drop below CENTER_MIN only at the final fallback. */
 export interface Columns { sidebar: number; center: number; details: number }
 
+/** Resolved four-column frame widths, including the collaboration dock. */
+export interface FrameColumns extends Columns { collaboration: number }
+
 // Contract-frozen geometry: the three-column concession chain's fixed points.
 /** Center column floor; only the final fallback may go below it. */
 export const CENTER_MIN = 640
@@ -37,6 +40,19 @@ export const DETAILS_MIN = 300
 export const DETAILS_MAX = 520
 /** Details width before any user drag. */
 export const DETAILS_DEFAULT = 360
+
+/** Collaboration dock drag clamp floor. */
+export const COLLABORATION_MIN = 320
+/** Collaboration dock drag clamp ceiling. */
+export const COLLABORATION_MAX = 880
+/** Collaboration dock width before any user drag. */
+export const COLLABORATION_DEFAULT = 440
+/**
+ * Conversation floor while the collaboration dock is visible. The dock is
+ * deliberately allowed beside a compact conversation on narrow desktop
+ * windows; unlike an overlay, both surfaces remain visible and operable.
+ */
+export const COLLABORATION_CENTER_MIN = 240
 
 /**
  * Clamp a panel width into its contract range.
@@ -74,4 +90,32 @@ export function computeColumns(viewport: number, sidebar: number, details: numbe
   // Step 3: auto-close details (derived — preferences untouched); center
   // absorbs any remaining deficit (may drop below CENTER_MIN).
   return { sidebar: s, center: Math.max(0, viewport - s), details: 0 }
+}
+
+/**
+ * Resolve the shell's mutually exclusive right-side columns. Collaboration
+ * owns the right edge when requested; otherwise the existing details solver
+ * remains byte-for-byte authoritative. A narrow viewport first shrinks the
+ * dock, then derives it closed without rewriting the stored preference.
+ */
+export function computeFrameColumns(
+  viewport: number,
+  sidebar: number,
+  details: number,
+  collaboration: number,
+): FrameColumns {
+  if (collaboration === 0) return { ...computeColumns(viewport, sidebar, details), collaboration: 0 }
+
+  const s = sidebar === 0 ? SIDEBAR_COLLAPSED : clampWidth(sidebar, SIDEBAR_MIN, SIDEBAR_MAX)
+  const c0 = clampWidth(collaboration, COLLABORATION_MIN, COLLABORATION_MAX)
+  if (s + c0 + COLLABORATION_CENTER_MIN <= viewport) {
+    return { sidebar: s, center: viewport - s - c0, details: 0, collaboration: c0 }
+  }
+
+  const c1 = Math.max(COLLABORATION_MIN, viewport - s - COLLABORATION_CENTER_MIN)
+  if (s + c1 + COLLABORATION_CENTER_MIN <= viewport) {
+    return { sidebar: s, center: COLLABORATION_CENTER_MIN, details: 0, collaboration: c1 }
+  }
+
+  return { sidebar: s, center: Math.max(0, viewport - s), details: 0, collaboration: 0 }
 }

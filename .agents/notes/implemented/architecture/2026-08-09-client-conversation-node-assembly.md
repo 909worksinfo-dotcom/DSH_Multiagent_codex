@@ -220,7 +220,7 @@ If an update with the same ID is genuinely earlier than the start in log order, 
 
 Prepend retains existing Context keys and current Node identity. A page may add historical keys at the front of Chat `order` or correct an existing Node's anchor, Location, visibility, or data, but it does not recreate unrelated business Contexts.
 
-On a structural change, the Chat Builder recomputes visible `order` and the secondary Location index from its keyed store. That is view-index work; it neither reruns every business Definition nor replaces unchanged Node values.
+On a structural change, the Chat Builder recomputes visible `order`, contiguous activity-flow groups, and the secondary Location index from its keyed store. That is view-index work; it neither reruns every business Definition nor replaces unchanged Node values.
 
 Reader gap repair is the largest algorithmic difference between prepend and ordinary append. A page can both add visible historical Nodes and change later Inbox instantaneous states and the Message classifications that depend on them.
 
@@ -306,13 +306,13 @@ Unknown fallback demonstrates Registry ownership: it handles only append-surface
 
 The Assembler calls `replace({ nodes, timeline })` on low-frequency complete replacements and `apply({ upserts, timeline })` for ordinary prepend/append flushes. Builders receive only final target Nodes already constructed by Definitions.
 
-[`ChatSnapshotBuilder`](../../../../packages/client/ui-conversation/src/client/conversation-nodes/chat-snapshot-builder.ts) maintains `order`, a keyed `nodes` store, the turn/step `locations` index, `timeline`, and the `legacy` slice used by StatsLine and mirrored into top-level public compatibility fields.
+[`ChatSnapshotBuilder`](../../../../packages/client/ui-conversation/src/client/conversation-nodes/chat-snapshot-builder.ts) maintains `order`, the builder-owned `flow` presentation index, a keyed `nodes` store, the turn/step `locations` index, `timeline`, and the `legacy` slice used by StatsLine and mirrored into top-level public compatibility fields.
 
-Only a new key or a change to `anchorSeq`, visibility, or Location identity makes a Chat update structural. An ordinary content change does not rebuild `order`; the keyed Node store replaces only that key's value.
+Only a new key or a change to `anchorSeq`, visibility, `flow`, or Location identity makes a Chat update structural. An ordinary content change does not rebuild `order` or the presentation index; the keyed Node store replaces only that key's value.
 
 For a structural change, the Builder computes visible order from current store values and reuses unchanged index arrays by reference. Prepend may add earlier history keys, append may add a key at the tail or its business anchor, and ordering never renames existing keys.
 
-[`ChatView`](../../../../packages/client/ui-conversation/src/client/chat/ChatView.tsx) only traverses `order`. Each [`ChatNodeSeat`](../../../../packages/client/ui-conversation/src/client/chat/ChatNodeSeat.tsx) remains in the same parent list under its Context key and dispatches the `'conversation.chat.node'` keyed slot by `node.kind`.
+[`ChatView`](../../../../packages/client/ui-conversation/src/client/chat/ChatView.tsx) traverses `flow`; regular items remain in the ordinary column, while contiguous nodes whose Definitions explicitly publish `flow: 'activity'` share a bounded scrolling group. Each [`ChatNodeSeat`](../../../../packages/client/ui-conversation/src/client/chat/ChatNodeSeat.tsx) remains keyed by its Context identity and dispatches the `'conversation.chat.node'` slot by `node.kind`.
 
 [`ChatNodeDataMap`](../../../../packages/client/ui-conversation/src/client/contract/chat-nodes.ts) is a declaration-merged renderer payload registry. Each business module registers its own Definition and keyed renderer; `registerConversationNodes()` and `registerChatNodeRenderers()` only assemble those independent contributions and do not interpret business through a closed union or central switch. Built-ins still live in `ui-conversation`, but this type and registration boundary allows a business to move into an independent package without changing the Chat dispatcher.
 

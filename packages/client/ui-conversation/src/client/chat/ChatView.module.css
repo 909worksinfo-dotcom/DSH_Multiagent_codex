@@ -46,14 +46,20 @@
 
 /* Settled-flow identity boundary. It is neutral today and becomes the natural
    measurement/mount unit for a virtualizer without changing the column gap. */
-.flowItem {
+.flowItem,
+.activityItem {
   min-width: 0;
+}
+
+.activityItem {
+  flex: none;
 }
 
 /* A keyed renderer may intentionally decline its row after dispatch (the
    completed-turn tail does this when it owns neither actions nor extensions).
    An empty flex item must not consume the column gap. */
-.flowItem:empty {
+.flowItem:empty,
+.activityItem:empty {
   display: none;
 }
 

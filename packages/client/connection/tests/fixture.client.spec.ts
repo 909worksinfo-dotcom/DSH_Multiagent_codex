@@ -52,6 +52,98 @@ async function collect<F>(stream: AsyncIterable<RpcRequest<F>>, abort: AbortCont
 }
 
 describe('createFixtureApi', () => {
+  it('mirrors P5 ledgers, restricted artifact reads, event paging, Lead send, and completion refusal', async () => {
+    const api = createFixtureApi()
+    const runId = sid('fixture-collaboration-p4')
+    const created = await api.collaboration.create(req({
+      leadSessionId: runId,
+      requestId: 'fixture-request-p4',
+      title: 'P4 collaboration',
+      objective: 'Exercise the public task and event contract',
+      language: 'en' as const,
+    }), new AbortController().signal)
+    if (!created.result.ok) throw new Error('collaboration create failed')
+    expect(created.result.value).toMatchObject({
+      id: runId,
+      cursor: 14,
+      tasks: [{ id: 'task-1', status: 'in_progress', owner: { role: 'expert', name: 'expert-1' } }],
+      artifacts: [{ id: 'artifact-1', version: 2, status: 'review', author: { role: 'expert' } }],
+      decisions: [{ id: 'decision-1', outcome: 'replan', lead: { role: 'lead' } }],
+      qualityGates: [{ id: 'quality-1', status: 'pending' }],
+      controller: { health: 'reworking', actionsTaken: ['decision-1'] },
+      protocol: {
+        mode: 'enforced',
+        topology: 'producer_reviewer',
+        limits: { maxChallengeRounds: 1, maxMessagesPerExpert: 6 },
+        members: [{ memberId: 'fixture-expert-1', usedMessages: 3, remainingMessages: 3 }],
+        challenges: [{ challengeId: 'challenge-1', status: 'responded', round: 1 }],
+      },
+      progress: {
+        total: 1,
+        inProgress: 1,
+        messageCount: 5,
+        artifactCount: 1,
+        decisionCount: 1,
+        qualityGatePending: 1,
+      },
+    })
+
+    const artifact = await api.collaboration.readArtifact(req({ runId, artifactId: 'artifact-1' }))
+    if (!artifact.result.ok) throw new Error('fixture artifact read failed')
+    expect(artifact.result.value).toMatchObject({ id: 'artifact-1', version: 2 })
+    expect(artifact.result.value.body).toContain('invalid inputs')
+    const missingArtifact = await api.collaboration.readArtifact(req({ runId, artifactId: 'missing' }))
+    expect(missingArtifact.result).toMatchObject({
+      ok: false,
+      error: { code: 'collaboration-error', details: { collaborationCode: 'TEAM_ARTIFACT_NOT_FOUND' } },
+    })
+
+    const first = await api.collaboration.events(req({ runId, afterCursor: 9, limit: 2 }))
+    expect(first.result).toMatchObject({
+      ok: true,
+      value: { events: [{ cursor: 10 }, { cursor: 11 }], hasMore: true, nextCursor: 11 },
+    })
+    const rest = await api.collaboration.events(req({ runId, afterCursor: 11, limit: 10 }))
+    expect(rest.result).toMatchObject({
+      ok: true,
+      value: { events: [{ cursor: 12 }, { cursor: 13 }, { cursor: 14 }], hasMore: false, nextCursor: 14 },
+    })
+    if (!first.result.ok || !rest.result.ok) throw new Error('fixture collaboration paging failed')
+    const publicEvents = [...first.result.value.events, ...rest.result.value.events]
+    const challenge = publicEvents.find(event => event.kind === 'challenge')
+    const response = publicEvents.find(event => event.kind === 'response')
+    expect(challenge).toMatchObject({
+      references: { taskId: 'task-1', challengeId: 'challenge-1' },
+    })
+    expect(challenge?.author.role).toBe('expert')
+    expect(challenge?.targets.map(target => target.role)).toEqual(['lead'])
+    expect(response).toMatchObject({
+      references: { taskId: 'task-1', challengeId: 'challenge-1' },
+    })
+    expect(response?.author.role).toBe('lead')
+    expect(response?.targets.map(target => target.role)).toEqual(['expert'])
+
+    const sent = await api.collaboration.send(req({
+      runId,
+      kind: 'inform' as const,
+      threadId: 'main',
+      content: 'A public Lead update',
+    }))
+    expect(sent.result).toMatchObject({
+      ok: true,
+      value: { cursor: 15, kind: 'inform', author: { role: 'lead' }, visibility: 'public' },
+    })
+    const completion = await api.collaboration.complete(req({
+      runId,
+      threadId: 'main',
+      content: 'Too early',
+    }))
+    expect(completion.result).toMatchObject({
+      ok: false,
+      error: { code: 'collaboration-error', details: { collaborationCode: 'DELIVERY_FAILED' } },
+    })
+  })
+
   it('serves the session list sorted by updatedAt desc and echoes rpcIds on every unary', async () => {
     const api = createFixtureApi()
     const request = req({})

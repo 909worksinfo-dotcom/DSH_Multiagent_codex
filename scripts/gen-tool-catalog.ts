@@ -60,6 +60,8 @@ import * as ToolSessionQuery from '@deepseek-ai/dsh-tool-session-query'
 import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
 import type TeamService from '@deepseek-ai/dsh-experimental-agent-team'
 import * as ToolTeam from '@deepseek-ai/dsh-experimental-tool-agent-team'
+import StableTeamRunService from '@deepseek-ai/dsh-agent-team'
+import * as ToolStableTeam from '@deepseek-ai/dsh-tool-agent-team'
 import * as ToolTodo from '@deepseek-ai/dsh-tool-todo'
 import * as ToolSubagent from '@deepseek-ai/dsh-tool-subagent'
 import * as ToolWeb from '@deepseek-ai/dsh-tool-web'
@@ -134,6 +136,27 @@ async function mountCatalogChildScope(
     mountScoped(createScope(inner, key).ctx)
   }, { inject }))
   catalogChildScopes.set(ctx, key)
+}
+
+/** Register one inert exact Agent with a child scope for scoped-tool schema harvest. */
+async function registerCatalogAgent(ctx: Context, sessionId: SessionId, inject: string[]): Promise<Agent> {
+  const session = ctx.sessions.get(sessionId)
+  if (session === undefined) throw new Error(`tool-catalog Session "${sessionId}" is missing`)
+  let registered: Agent | undefined
+  await ctx.plugin(Object.assign((inner: Context) => {
+    const agent = {
+      id: session.id,
+      session,
+      options: {},
+      status: 'idle',
+    } as unknown as Agent
+    Object.assign(agent, { ctx: createScope(inner, agent).ctx })
+    inner.agents.register(agent)
+    registered = agent
+  }, { inject }))
+  if (registered === undefined) throw new Error(`tool-catalog Agent "${sessionId}" was not registered`)
+  catalogChildScopes.set(ctx, registered)
+  return registered
 }
 
 /**
@@ -533,33 +556,50 @@ const TOOL_PACKAGES: ToolPackage[] = [
       await ctx.plugin(AgentRegistry)
       await ctx.plugin(SessionStore)
       const session = ctx.sessions.create(SessionId('tool-catalog-team-lead'))
-      let agent!: Agent
+      const currentAgent = (): Agent | undefined => catalogChildScopes.get(ctx)
       const membership = {
-        get root() { return agent },
+        get root(): Agent {
+          const rootAgent = currentAgent()
+          if (rootAgent === undefined) throw new Error('tool-catalog Team Lead is not registered')
+          return rootAgent
+        },
         id: session.id,
         role: 'lead' as const,
         name: 'lead',
       }
       ctx.provide('agentTeams', {
-        tryMembership: (candidate: Agent) => candidate === agent ? membership : undefined,
+        tryMembership: (candidate: Agent) => candidate === currentAgent() ? membership : undefined,
         membership: () => membership,
       } as unknown as TeamService)
-      await ctx.plugin(Object.assign((inner: Context) => {
-        agent = {
-          id: session.id,
-          session,
-          options: {},
-          status: 'idle',
-        } as unknown as Agent
-        Object.assign(agent, { ctx: createScope(inner, agent).ctx })
-        inner.agents.register(agent)
-      }, { inject: ['tools', 'systemPrompt', 'agents', 'agentTeams'] }))
+      await registerCatalogAgent(ctx, session.id, ['tools', 'systemPrompt', 'agents', 'agentTeams'])
       await ctx.plugin(ToolTeam)
-      catalogChildScopes.set(ctx, agent)
     },
     scope: ctx => catalogChildScopes.get(ctx) as Agent,
     note:
       'All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names.',
+  },
+  {
+    pkg: '@deepseek-ai/dsh-tool-agent-team',
+    dir: 'tool-agent-team',
+    source: 'packages/collaboration/tool-agent-team/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.teamRuns', 'an exact live TeamRun member Agent'],
+    writes: ['tool/call', 'collaboration/task', 'collaboration/message', 'tool/result'],
+    async mount(ctx) {
+      await ctx.plugin(AgentRegistry)
+      await ctx.plugin(SessionStore)
+      await ctx.plugin(StableTeamRunService)
+      const session = ctx.sessions.create(SessionId('tool-catalog-team-run-lead'))
+      const agent = await registerCatalogAgent(ctx, session.id, ['tools', 'systemPrompt', 'agents', 'teamRuns'])
+      await ctx.teamRuns.createRun(agent, {
+        objective: 'Harvest stable collaboration tool schemas',
+        complexity: 'simple',
+        plannedExperts: 1,
+      })
+      await ctx.plugin(ToolStableTeam)
+    },
+    scope: ctx => catalogChildScopes.get(ctx) as Agent,
+    note:
+      'All thirteen tools are scoped to admitted stable TeamRun members. They read one authoritative service, publish only public typed collaboration records, and mutate the compare-and-set task DAG; formation and ExpertBlueprint-bound child activation remain controller-owned.',
   },
   {
     pkg: '@deepseek-ai/dsh-tool-todo',

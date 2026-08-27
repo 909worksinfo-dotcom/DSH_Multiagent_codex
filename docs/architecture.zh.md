@@ -105,7 +105,9 @@ turn/end
 
 seam 正是替换一个提供方就能改变整个产品的原因。文件系统与进程提供方共享同一个执行世界，因此把它们指向远程沙箱，也就把 Bash、PTY 和 LSP 一并搬了过去，无需提供方专用 fork。[subagent 提供方](subsystems/subagent.md)在同一个接口之后同样千差万别，从新建一个子 agent，到把一个轮次委派给另一个产品。
 
-[实验性 Agent Teams](subsystems/agent-team.md) 是 `ctx.agentTeams` 上的私有显式启用协作 seam，在可继续 subagent 之上提供持久 roster、任务板和 mailbox。
+[稳定 TeamRun 协作](subsystems/agent-team.md)是 `ctx.teamRuns` 上的产品领域 seam，一份 Lead Session log 拥有精确组队状态、专家尝试、compare-and-set 任务 DAG 与仅公开的类型化协作记录。P2 [`expert-catalog`](../packages/collaboration/expert-catalog/README.md)只接纳精确的本地 ExpertBlueprint revision，并把 preset、skill 与 plugin 内容解析成一份不可变 digest；[`expert-runtime`](../packages/collaboration/expert-runtime/README.md)把该 digest 同时绑定到 Lead 与 child 日志，在首 prompt 前创建真实 continuable child，强制执行预算，并在恢复时解析到不同能力时故障关闭。自动规划期间，[`skill-marketplace`](../packages/skill/skill-marketplace/README.md)会独立发现与任务相关的候选，并由已接受的计划保留就绪状态；只有已持久化且已加载的方法技能会进入指定 child 的 skill catalog。这些层仅使用 agent 创建、preset、subagent、Session 与 pre-step 扩展点，不导入具体 agent loop
+
+历史实验性 Agent Teams 服务在迁移期间继续作为 `ctx.agentTeams` 上的私有显式启用 seam，仅服务现有示例，其 `team/*` 记录与稳定服务的 `collaboration/*` 记录有意保持隔离
 
 ## 新行为的归属位置
 

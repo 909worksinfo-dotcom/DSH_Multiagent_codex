@@ -63,6 +63,19 @@ export interface TurnTailChatData {
   readonly tokensPerSecond?: number
 }
 
+/** One tool call counted in the turn summary. */
+export interface ToolCallCount {
+  readonly name: string
+  readonly label: string
+  readonly count: number
+}
+
+/** Compact turn-level tool-call summary published after the turn closes. */
+export interface TurnSummaryChatData {
+  readonly turn: number
+  readonly calls: readonly ToolCallCount[]
+}
+
 /**
  * Test whether a Tool root has settled.
  * @param block - Tool root lifecycle value.

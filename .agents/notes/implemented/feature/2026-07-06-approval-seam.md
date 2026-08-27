@@ -1,4 +1,4 @@
-# Agent Note: The approval seam — one-shot permission decisions over a waterfall of answerers
+# Agent Note: The approval seam — scoped permission decisions over a waterfall of answerers
 
 Status: implemented
 
@@ -27,7 +27,7 @@ One `cordis.yml` entry mounts the seam. Not loading it is the fail-closed opt-ou
 
 The entry alone provides mechanism, not a channel: with no answerer composed, every ask resolves `unavailable` and the asking tool call denies — fail-closed needs no configuration. Composing the ACP app (`@deepseek-ai/dsh-acp-demo`, as in [the acp-agent example's default tree](../../../../examples/acp-agent/README.md)) completes the loop: its [automation-only bridge](../simplification/2026-07-23-acp-automation-only-protocol.md) registers an answerer that sends `session/request_permission` to the owning client with the exact tool-call id and one-shot allow/reject options. `policy: never` is the unattended stance — every ask auto-rejects deterministically, and the current value joins the runtime-context snapshot. `policy` is validated against the closed list at plugin load; anything else throws.
 
-What a composed deployment observes: `allowed-once` lets exactly that call proceed; rejection, dismissal, and channel absence deny with three distinct reasons the model can tell apart; a successful in-turn request lands a durable `approval/asked`/`approval/decided` pair on the asking agent's session log; nothing about a grant persists past the call that asked. An idle request or audit append failure rejects instead of returning an unaudited decision.
+What a composed deployment observes: `allowed-once` lets exactly that call proceed; `allowed-for-turn` also installs an in-memory grant for the same tool and consumer-defined operation class until the current turn ends; rejection, dismissal, and channel absence deny with three distinct reasons the model can tell apart. Every successful in-turn request, including a reused turn grant, lands a durable `approval/asked`/`approval/decided` pair on the asking agent's session log. An idle request or audit append failure rejects instead of returning an unaudited decision.
 
 One ask under this composition, from the sandbox example's recorded `escalation-approved` scenario — the model requests a sandbox escalation, the gate asks, and the automation client selects Allow once:
 
@@ -51,15 +51,15 @@ The `escalation-rejected` twin ends in `{"outcome": "rejected"}` instead: nothin
 
 #### The seam: mechanism and policy split
 
-After validation and a successful `approval/asked` append, the service resolves the `approval/request` waterfall to `allowed-once`, `rejected`, `cancelled`, or `unavailable`. It borrows the readonly request identity and signal, treats abort as `cancelled`, contains answerer failures and invalid returns as `unavailable`, discards late answers, and appends the paired `approval/decided` event. Pre-commit audit failures reject; post-append observer failures cannot undo an authoritative event. `allowed-once` authorizes only the asked action, and `request()` rejects outside an open turn so the audit pair remains inside the durable commit boundary.
+After validation and a successful `approval/asked` append, the service resolves the `approval/request` waterfall to `allowed-once`, `allowed-for-turn`, `rejected`, `cancelled`, or `unavailable`. It borrows the readonly request identity and signal, treats abort as `cancelled`, contains answerer failures and invalid returns as `unavailable`, discards late answers, and appends the paired `approval/decided` event. Pre-commit audit failures reject; post-append observer failures cannot undo an authoritative event. `allowed-once` authorizes only the asked action. `allowed-for-turn` stores the exact agent, current `turn/start`, tool name, and optional consumer-defined `taskKey`; only a non-empty key can be reused, and `never` policy still rejects before reuse. `request()` rejects outside an open turn so every audit pair remains inside the durable commit boundary.
 
 Answerers are `approval/request` waterfall listeners. Zero listeners fall through to `unavailable`; a recognizing listener occupies the first-wins decision slot, while an unrecognized agent must delegate with `next()`. Listeners dispose with their fibers, so an unloaded channel fails closed. Because sibling registration order is not deterministic, a deployment composes one terminal answerer and reserves `prepend` for decide-or-delegate gates.
 
-`ApprovalRequest` carries the asking `agent`, `toolName`, optional exact `callId`, human-readable `reason`, and optional `signal`. It uses the `CallId` brand without importing `dsh-tools`, which depends on this seam. Channel adapters correlate any richer call state by `callId`; the approval request does not duplicate tool arguments.
+`ApprovalRequest` carries the asking `agent`, `toolName`, optional exact `callId`, human-readable `reason`, optional stable `taskKey`, and optional `signal`. It uses the `CallId` brand without importing `dsh-tools`, which depends on this seam. Channel adapters correlate any richer call state by `callId`; the approval request does not duplicate tool arguments. The enforcing consumer owns `taskKey` because display text and model-supplied justification are not authority identifiers.
 
 #### Ask routing in dsh-tools
 
-`ToolRuntime.execute()` resolves `ask` before dispatch: `allowed-once` proceeds, while rejection, cancellation, and channel absence produce distinct deny reasons. Opportunistic `ctx.get('approval')` consumption lets an absent or unmounted service fail closed without gating the registry fiber. Agent-less execution also fails closed because it has neither an audit session nor a channel owner.
+`ToolRuntime.execute()` resolves `ask` before dispatch: `allowed-once` and `allowed-for-turn` proceed, while rejection, cancellation, and channel absence produce distinct deny reasons. Ordinary pre-execute asks use the tool name plus a fixed policy-stage key; sandbox escalation uses the tool name plus subject and target mode, excluding the model's justification from identity. Opportunistic `ctx.get('approval')` consumption lets an absent or unmounted service fail closed without gating the registry fiber. Agent-less execution also fails closed because it has neither an audit session nor a channel owner.
 
 #### The per-session policy tier
 

@@ -79,7 +79,12 @@ export { ApprovalRequestId } from './types.ts'
 export type { ApprovalOutcome } from './types.ts'
 
 /** Every {@link ApprovalOutcome}, for runtime normalization of answerer returns. */
-const OUTCOMES: readonly ApprovalOutcome[] = ['allowed-once', 'rejected', 'cancelled', 'unavailable']
+const OUTCOMES: readonly ApprovalOutcome[] = ['allowed-once', 'allowed-for-turn', 'rejected', 'cancelled', 'unavailable']
+
+/** One turn-local grant key supplied by the enforcing consumer. */
+function grantKey(req: ApprovalRequest): string | undefined {
+  return req.taskKey === undefined ? undefined : `${req.toolName}\u0000${req.taskKey}`
+}
 
 /**
  * A session's approval policy — what happens to an {@link ApprovalService}
@@ -124,13 +129,13 @@ export function effectiveApprovalPolicy(events: readonly SessionEvent[]): Approv
  * commit/replay boundary, so a bare event appended between turns is
  * indistinguishable from a crash tail and silently dropped on reload.
  */
-function hasOpenTurn(events: readonly SessionEvent[]): boolean {
+function openTurnBoundary(events: readonly SessionEvent[]): SessionEvent | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const type = (events[index] as SessionEvent).type
-    if (type === 'turn/start') return true
-    if (type === 'turn/end') return false
+    const event = events[index] as SessionEvent
+    if (event.type === 'turn/start') return event
+    if (event.type === 'turn/end') return undefined
   }
-  return false
+  return undefined
 }
 
 /**
@@ -167,6 +172,11 @@ export interface ApprovalRequest {
   /** The asker's human-readable explanation of WHY it is asking. */
   readonly reason?: string
   /**
+   * Stable consumer-defined operation class eligible for a current-task grant.
+   * Omit when the consumer cannot safely classify similar requests.
+   */
+  readonly taskKey?: string
+  /**
    * Aborting withdraws the question: the request settles `'cancelled'`
    * immediately and a late answer from a still-pending answerer is discarded.
    */
@@ -190,6 +200,8 @@ export interface Config {
  * changes to the model through the runtime-context snapshot and switch notices.
  */
 export class ApprovalService extends Service {
+  private readonly turnGrants = new WeakMap<Agent, { boundary: SessionEvent; keys: Set<string> }>()
+
   static Config: z<Config> = z.object({
     policy: z.union(['ask', 'never'] as const).default('ask'),
   })
@@ -249,20 +261,27 @@ export class ApprovalService extends Service {
    * violate the pair. Session contains post-commit observer failures, so an
    * authoritative append cannot reject the request or suppress its matching
    * audit event.
-   * @param req - the pending decision (agent, tool identity, reason, signal).
-   * @returns the closed outcome; `'allowed-once'` is the only grant.
+   * @param req - the pending decision (agent, tool identity, operation class, reason, signal).
+   * @returns the closed outcome; requests with the same non-empty `taskKey` and
+   *   tool in one turn reuse a prior `'allowed-for-turn'` grant as
+   *   `'allowed-once'` without dispatching an answerer.
    * @throws when no turn is open or either audit event fails before the session
    *   append commit point.
    */
   async request(req: ApprovalRequest): Promise<ApprovalOutcome> {
     const session = req.agent.session
-    if (!hasOpenTurn(session.events)) {
+    const boundary = openTurnBoundary(session.events)
+    if (boundary === undefined) {
       throw new Error(
         'approval.request() outside an open turn: the approval/asked + approval/decided audit pair '
         + 'must be turn-enclosed (a bare event between turns is crash-tail garbage on reload). '
         + 'Ask from inside the turn that needs the decision.',
       )
     }
+    const key = grantKey(req)
+    const previous = this.turnGrants.get(req.agent)
+    const grants = previous?.boundary === boundary ? previous.keys : new Set<string>()
+    const reused = this.effectivePolicy(session) === 'ask' && key !== undefined && grants.has(key)
     const id = ApprovalRequestId(randomUUID())
     session.append('approval/asked', {
       id,
@@ -270,8 +289,12 @@ export class ApprovalService extends Service {
       ...req.callId !== undefined ? { callId: req.callId } : {},
       ...req.reason !== undefined ? { reason: req.reason } : {},
     })
-    const outcome = await this.decide(req, session)
+    const outcome = reused ? 'allowed-once' : await this.decide(req, session)
     session.append('approval/decided', { id, outcome })
+    if (outcome === 'allowed-for-turn' && key !== undefined) {
+      grants.add(key)
+      this.turnGrants.set(req.agent, { boundary, keys: grants })
+    }
     return outcome
   }
 

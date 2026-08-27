@@ -296,6 +296,36 @@ export interface GoalConfig {
 
 来源：[`packages/examples/agent-spine-demo/src/index.ts:92`](../packages/examples/agent-spine-demo/src/index.ts)
 
+<a id="deepseek-aidsh-agent-team"></a>
+
+## `@deepseek-ai/dsh-agent-team`
+
+需要：`agents` · `sessions`
+
+```ts config-catalog
+/** Cordis deployment configuration for the TeamRun service. */
+export interface Config {
+  /** Maximum concurrent active plus provisioning experts, from one through eight. */
+  readonly maxActiveExperts?: number
+  /** Maximum provisioning attempts retained by one run. */
+  readonly maxProvisionAttempts?: number
+  /** Maximum current non-deleted tasks. */
+  readonly maxTasks?: number
+  /** Maximum retained public messages. */
+  readonly maxPublicMessages?: number
+  /** Maximum UTF-8 bytes in one public message. */
+  readonly maxPublicMessageBytes?: number
+  /** Maximum retained first-class artifacts. */
+  readonly maxArtifacts?: number
+  /** Maximum UTF-8 bytes in one artifact body. */
+  readonly maxArtifactBodyBytes?: number
+  /** Cursor distance after which an unfinished task is reported as stalled. */
+  readonly taskStallCursorThreshold?: number
+}
+```
+
+来源：[`packages/collaboration/agent-team/src/types.ts:150`](../packages/collaboration/agent-team/src/types.ts)
+
 <a id="deepseek-aidsh-agent-tool-presentation"></a>
 
 ## `@deepseek-ai/dsh-agent-tool-presentation`
@@ -630,6 +660,134 @@ export interface Config {
 ```
 
 来源：[`packages/experimental/tool-agent-team/src/index.ts:17`](../packages/experimental/tool-agent-team/src/index.ts)
+
+<a id="deepseek-aidsh-expert-catalog"></a>
+
+## `@deepseek-ai/dsh-expert-catalog`
+
+需要： `agentPresets` · `skills`
+
+```ts config-catalog
+/** Deployment-owned local catalog configuration. */
+export interface Config {
+  /** Complete set of immutable revisions available in this process. */
+  readonly blueprints?: ExpertBlueprint[]
+}
+
+/** One locally configured immutable expert definition. */
+export interface ExpertBlueprint {
+  /** Exact immutable selector. */
+  readonly ref: ExpertBlueprintRef
+  /** Human-readable expert role. */
+  readonly role: string
+  /** Stable responsibility and operating objective. */
+  readonly objective: string
+  /** Agent preset mounted for fresh creation and cold resume. */
+  readonly preset: string
+  /** Model-invocable skills that must resolve within the preset composition. */
+  readonly skills: readonly string[]
+  /** Enabled plugin module rows that must occur in the preset composition. */
+  readonly plugins: readonly string[]
+  /** Runtime-enforced tool visibility policy. */
+  readonly tools: ExpertToolPolicy
+  /** Optional model route overrides. */
+  readonly model: ExpertModelPolicy
+  /** Optional child-specific persona section. */
+  readonly persona?: string
+  /** Structured assignment inputs. */
+  readonly inputs: readonly ExpertFieldDefinition[]
+  /** Structured assignment outputs. */
+  readonly outputs: readonly ExpertFieldDefinition[]
+  /** Completion conditions supplied to the expert. */
+  readonly acceptanceCriteria: readonly string[]
+  /** Public collaboration permissions. */
+  readonly collaboration: ExpertCollaborationPermissions
+  /** Execution limits retained with the revision. */
+  readonly budget: ExpertExecutionBudget
+}
+
+/** Exact immutable blueprint revision selector. */
+export interface ExpertBlueprintRef {
+  /** Stable blueprint identity. */
+  readonly id: ExpertBlueprintId
+  /** Positive immutable revision. */
+  readonly revision: number
+}
+
+/** Tools made visible to the expert after preset composition. */
+export interface ExpertToolPolicy {
+  /** Optional complete allowlist. */
+  readonly allow?: readonly string[]
+  /** Optional denylist intersected with the allowlist and preset visibility. */
+  readonly deny?: readonly string[]
+}
+
+/** Model route declared by an expert blueprint. */
+export interface ExpertModelPolicy {
+  /** Optional provider override; absence inherits the Lead route. */
+  readonly provider?: string
+  /** Optional model override; absence inherits the Lead route. */
+  readonly model?: string
+  /** Optional per-activation output-token ceiling. */
+  readonly maxTokens?: number
+}
+
+/** Named input or output field in an expert assignment. */
+export interface ExpertFieldDefinition {
+  /** Stable lower-camel-case field name. */
+  readonly name: string
+  /** User-safe field meaning. */
+  readonly description: string
+  /** Whether the field must be present. */
+  readonly required: boolean
+}
+
+/** Public collaboration operations one expert may perform. */
+export interface ExpertCollaborationPermissions {
+  /** Whether this role may challenge another member's public proposal. */
+  readonly challenge: boolean
+  /** Whether this role may publish a review. */
+  readonly review: boolean
+  /** Whether this role may request help from peers. */
+  readonly requestHelp: boolean
+}
+
+/** Per-expert execution budgets fixed by the blueprint revision. */
+export interface ExpertExecutionBudget {
+  /** Maximum model turns assigned to the expert. */
+  readonly maxTurns: number
+  /** Maximum output tokens allowed for each expert model request. */
+  readonly maxTokens: number
+  /** Wall-clock execution ceiling in milliseconds. */
+  readonly timeoutMs: number
+}
+
+/** Stable locally configured blueprint identity. */
+export type ExpertBlueprintId = Branded<'ExpertBlueprintId'>
+```
+
+依赖： [`Branded`](../packages/util/brand/src/index.ts)
+
+来源： [`packages/collaboration/expert-catalog/src/types.ts:100`](../packages/collaboration/expert-catalog/src/types.ts)
+
+<a id="deepseek-aidsh-expert-runtime"></a>
+
+## `@deepseek-ai/dsh-expert-runtime`
+
+需要： `agents` · `sessions` · `sessionPersistence` · `teamRuns` · `expertCatalog` · `subagents`
+
+```ts config-catalog
+/** Deployment configuration for exact child provisioning. */
+export interface Config {
+  /** Named continuable subagent provider used for new expert attempts. */
+  readonly subagentProvider: string
+  /** Maximum UTF-8 bytes in the generated initial expert prompt. */
+  readonly maxInitialPromptBytes: number
+}
+```
+
+来源： [`packages/collaboration/expert-runtime/src/types.ts:28`](../packages/collaboration/expert-runtime/src/types.ts)
+
 
 <a id="deepseek-aidsh-file-reference-local"></a>
 
@@ -1672,7 +1830,7 @@ export interface JsonRpcConfig {
 
 依赖：`Readable`（`node:stream`）· `Writable`（`node:stream`）
 
-来源：[`packages/sdk/server/src/index.ts:29`](../packages/sdk/server/src/index.ts)
+来源：[`packages/sdk/server/src/index.ts:25`](../packages/sdk/server/src/index.ts)
 
 <a id="deepseek-aidsh-session-persistence-jsonl"></a>
 
@@ -2010,6 +2168,32 @@ export interface Config {
 ```
 
 来源：[`packages/skill/skill-filesystem/src/index.ts:49`](../packages/skill/skill-filesystem/src/index.ts)
+
+<a id="deepseek-aidsh-skill-marketplace"></a>
+
+## `@deepseek-ai/dsh-skill-marketplace`
+
+```ts config-catalog
+/** Deployment configuration for bounded remote discovery. */
+export interface Config {
+  /** Per-provider HTTP deadline. */
+  readonly timeoutMs: number
+  /** Maximum candidates retained from each provider response. */
+  readonly maxResultsPerProvider: number
+  /** Smithery registry base URL. */
+  readonly smitheryEndpoint: string
+  /** skills.sh base URL. */
+  readonly skillsShEndpoint: string
+  /** Composio v3 API base URL. */
+  readonly composioEndpoint: string
+  /** Optional deployment credential used only for Composio discovery. */
+  readonly composioApiKey?: string
+  /** Exact skills.sh repository sources admitted as method cards. */
+  readonly trustedSkillsShSources: readonly string[]
+}
+```
+
+来源：[`packages/skill/skill-marketplace/src/index.ts:47`](../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="deepseek-aidsh-spill-local"></a>
 
@@ -2378,6 +2562,57 @@ export interface Config {
 
 来源：[`packages/core/system-prompt/src/index.ts:186`](../packages/core/system-prompt/src/index.ts)
 
+<a id="deepseek-aidsh-team-orchestrator"></a>
+
+## `@deepseek-ai/dsh-team-orchestrator`
+
+需要：`agents` · `sessions` · `teamRuns` · `expertCatalog` · `expertRuntime`
+
+```ts config-catalog
+/** Cordis deployment configuration for profiling and planning bounds. */
+export interface Config {
+  /** Exact candidate revisions available to each supported domain. */
+  readonly pools: readonly TeamBlueprintPool[]
+  /** Maximum UTF-8 bytes in objective, criteria, workstream, risk, and context strings. */
+  readonly maxTextBytes: number
+  /** Maximum explicit workstreams retained in a profile. */
+  readonly maxWorkstreams: number
+  /** Maximum items in each criteria, risk, capability, dependency, or scope list. */
+  readonly maxListItems: number
+  /** Maximum named task-context fields. */
+  readonly maxContextEntries: number
+  /** Maximum UTF-8 bytes in one complete orchestration event payload. */
+  readonly maxEventBytes: number
+  /** Communication policy snapshotted by complexity. */
+  readonly communication: Readonly<Record<TeamRunComplexity, TeamCommunicationLimits>>
+  /** Maximum market-discovered capabilities retained for one expert. */
+  readonly maxMarketplaceSkillsPerExpert: number
+}
+
+/** Deployment blueprint pool for one supported task domain. */
+export interface TeamBlueprintPool {
+  /** Domain selected by a task request. */
+  readonly domain: TeamTaskDomain
+  /** Ordered, immutable candidate revisions. */
+  readonly blueprints: readonly ExpertBlueprintRef[]
+}
+
+/** Communication limits committed into each charter. */
+export interface TeamCommunicationLimits {
+  /** Maximum challenge-response rounds per disputed proposal. */
+  readonly maxChallengeRounds: number
+  /** Maximum public messages expected from one expert before Lead intervention. */
+  readonly maxMessagesPerExpert: number
+}
+
+/** Supported first-wave product domains. */
+export type TeamTaskDomain = 'research_analysis' | 'product_solution' | 'software_development'
+```
+
+依赖：[`ExpertBlueprintRef`](subsystems/agent-team.md) · [`TeamRunComplexity`](../packages/collaboration/agent-team/src/index.ts)
+
+来源：[`packages/collaboration/team-orchestrator/src/types.ts:98`](../packages/collaboration/team-orchestrator/src/types.ts)
+
 <a id="deepseek-aidsh-terminal-bash"></a>
 
 ## `@deepseek-ai/dsh-terminal-bash`
@@ -2472,6 +2707,19 @@ export type TokenMeterConfig = Record<string, never>
 ```
 
 来源：[`packages/llm/token-meter/src/types.ts:12`](../packages/llm/token-meter/src/types.ts)
+
+<a id="deepseek-aidsh-tool-agent-team"></a>
+
+## `@deepseek-ai/dsh-tool-agent-team`
+
+需要：`agents` · `teamRuns` · `tools` · `systemPrompt`
+
+```ts config-catalog
+/** This thin adapter has no deployment tunables. */
+export type Config = Record<never, never>
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts:34`](../packages/collaboration/tool-agent-team/src/index.ts)
 
 <a id="deepseek-aidsh-tool-bash"></a>
 
@@ -3004,7 +3252,7 @@ export interface Config {
 export type ApprovalPolicy = 'ask' | 'never'
 ```
 
-来源：[`packages/interaction/user-approval/src/index.ts:177`](../packages/interaction/user-approval/src/index.ts)
+来源：[`packages/interaction/user-approval/src/index.ts:187`](../packages/interaction/user-approval/src/index.ts)
 
 <a id="deepseek-aidsh-web"></a>
 
@@ -3199,6 +3447,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-agent-preset`（[`packages/client/ui-agent-preset/src/index.ts`](../packages/client/ui-agent-preset/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-attachment`（[`packages/client/ui-attachment/src/index.ts`](../packages/client/ui-attachment/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-brand-official`（[`packages/client/ui-brand-official/src/index.ts`](../packages/client/ui-brand-official/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-collaboration`（[`packages/client/ui-collaboration/src/index.ts`](../packages/client/ui-collaboration/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-commands`（[`packages/client/ui-commands/src/index.ts`](../packages/client/ui-commands/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-conversation`（[`packages/client/ui-conversation/src/index.ts`](../packages/client/ui-conversation/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-cordis`（[`packages/extensions/ui-cordis/src/index.ts`](../packages/extensions/ui-cordis/src/index.ts)）

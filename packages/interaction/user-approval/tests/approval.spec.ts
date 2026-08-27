@@ -70,6 +70,53 @@ describe('ApprovalService.request', () => {
     expect(decided?.data['id']).toBe(asked?.data['id'])
   })
 
+  it('reuses matching task keys with complete audit pairs and expires them at the next turn', async () => {
+    const ctx = await mounted()
+    const session = Session.create(SessionId('turn-grant'))
+    session.append('turn/start', { turn: 1 })
+    const agent = { session } as unknown as Agent
+    const answerer = vi.fn<() => Promise<ApprovalOutcome>>()
+      .mockResolvedValueOnce('allowed-for-turn')
+      .mockResolvedValueOnce('allowed-once')
+      .mockResolvedValueOnce('allowed-once')
+      .mockResolvedValueOnce('allowed-once')
+    ctx.on('approval/request', answerer)
+
+    await expect(ctx.approval.request(requestOf(agent, { toolName: 'bash', reason: 'first wording', taskKey: 'sandbox:workspace-write' })))
+      .resolves.toBe('allowed-for-turn')
+    await expect(ctx.approval.request(requestOf(agent, { toolName: 'bash', reason: 'different wording', taskKey: 'sandbox:workspace-write' })))
+      .resolves.toBe('allowed-once')
+    expect(answerer).toHaveBeenCalledTimes(1)
+    expect(session.events.filter(event => event.type === 'approval/asked')).toHaveLength(2)
+    expect(session.events.filter(event => event.type === 'approval/decided')).toHaveLength(2)
+
+    await expect(ctx.approval.request(requestOf(agent, { toolName: 'bash', taskKey: 'sandbox:danger-full-access' })))
+      .resolves.toBe('allowed-once')
+    await expect(ctx.approval.request(requestOf(agent, { toolName: 'bash', reason: 'first wording' })))
+      .resolves.toBe('allowed-once')
+    expect(answerer).toHaveBeenCalledTimes(3)
+
+    session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+    session.append('turn/start', { turn: 2 })
+    await expect(ctx.approval.request(requestOf(agent, { toolName: 'bash', taskKey: 'sandbox:workspace-write' })))
+      .resolves.toBe('allowed-once')
+    expect(answerer).toHaveBeenCalledTimes(4)
+  })
+
+  it('lets never policy reject after a current-turn grant', async () => {
+    const ctx = await mounted()
+    const session = Session.create(SessionId('turn-grant-never'))
+    session.append('turn/start', { turn: 1 })
+    const agent = { session } as unknown as Agent
+    const answerer = vi.fn<() => Promise<ApprovalOutcome>>().mockResolvedValue('allowed-for-turn')
+    ctx.on('approval/request', answerer)
+
+    await expect(ctx.approval.request(requestOf(agent, { taskKey: 'same' }))).resolves.toBe('allowed-for-turn')
+    setApprovalPolicy(session, 'never')
+    await expect(ctx.approval.request(requestOf(agent, { taskKey: 'same' }))).resolves.toBe('rejected')
+    expect(answerer).toHaveBeenCalledTimes(1)
+  })
+
   it('omits absent optional fields from the asked audit event', async () => {
     const ctx = await mounted()
     const { agent, appended } = fakeAgent()

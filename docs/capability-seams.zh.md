@@ -162,9 +162,18 @@ flowchart LR
   pkg_subagent_dsh_sdk["subagent-dsh-sdk"]
   pkg_tool_subagent_control["tool-subagent-control"]
   pkg_tool_ralph["tool-ralph"]
+  pkg_experimental_agent_team["experimental-agent-team"]
+  svc_agentTeams["ctx.agentTeams<br/>Experimental Agent Teams coordination domain"]
+  pkg_experimental_tool_agent_team["experimental-tool-agent-team"]
   pkg_agent_team["agent-team"]
-  svc_agentTeams["ctx.agentTeams<br/>Agent Teams coordination domain"]
+  svc_teamRuns["ctx.teamRuns<br/>Stable TeamRun collaboration domain"]
   pkg_tool_agent_team["tool-agent-team"]
+  pkg_expert_catalog["expert-catalog"]
+  svc_expertCatalog["ctx.expertCatalog<br/>Immutable expert capability catalog"]
+  pkg_expert_runtime["expert-runtime"]
+  svc_expertRuntime["ctx.expertRuntime<br/>Bound expert child runtime"]
+  pkg_team_orchestrator["team-orchestrator"]
+  svc_teamOrchestrator["ctx.teamOrchestrator<br/>Automatic team formation orchestrator"]
   pkg_jobs["jobs"]
   svc_jobs["ctx.jobs<br/>Background job registry"]
   pkg_jobs_local["jobs-local"]
@@ -206,7 +215,7 @@ flowchart LR
   pkg_agent_default_model --> svc_agentDefaultModel
   pkg_agent_loop --> svc_agentLoop
   pkg_agent_presets --> svc_agentPresets
-  pkg_agent_team --> svc_agentTeams
+  pkg_agent_team --> svc_teamRuns
   pkg_api_gateway --> svc_typertGateway
   pkg_apiproxy --> svc_apiProxy
   pkg_approval --> svc_approval
@@ -228,6 +237,9 @@ flowchart LR
   pkg_directory_picker_browse --> svc_directoryPicker
   pkg_directory_picker_native --> svc_directoryPicker
   pkg_e2b --> svc_e2b
+  pkg_experimental_agent_team --> svc_agentTeams
+  pkg_expert_catalog --> svc_expertCatalog
+  pkg_expert_runtime --> svc_expertRuntime
   pkg_file_reference --> svc_fileReferences
   pkg_file_reference_local --> svc_fileReferences
   pkg_fs --> svc_fs
@@ -290,6 +302,7 @@ flowchart LR
   pkg_subprocess_e2b --> svc_subprocess
   pkg_subprocess_local --> svc_subprocess
   pkg_system_prompt --> svc_systemPrompt
+  pkg_team_orchestrator --> svc_teamOrchestrator
   pkg_terminal --> svc_terminals
   pkg_terminal_bash --> svc_terminals
   pkg_token_meter --> svc_tokenMeter
@@ -308,7 +321,7 @@ flowchart LR
   svc_agentDefaultModel --> pkg_headless
   svc_agentDefaultModel --> pkg_host_apiproxy
   svc_agentLoop --> pkg_agent_spine_demo
-  svc_agentTeams --> pkg_tool_agent_team
+  svc_agentTeams --> pkg_experimental_tool_agent_team
   svc_agents --> pkg_acp
   svc_agents --> pkg_agent_loop
   svc_agents --> pkg_subagent_inprocess
@@ -328,6 +341,7 @@ flowchart LR
   svc_dynamicCordisRunner --> pkg_tool_cordis
   svc_e2b --> pkg_fs_e2b
   svc_e2b --> pkg_subprocess_e2b
+  svc_expertCatalog --> pkg_expert_runtime
   svc_fs --> pkg_tool_fs
   svc_invariants --> pkg_agent
   svc_invariants --> pkg_agent_loop
@@ -395,6 +409,8 @@ flowchart LR
   svc_systemPrompt --> pkg_tool_terminal
   svc_systemPrompt --> pkg_tool_web
   svc_systemPrompt --> pkg_tools
+  svc_teamOrchestrator --> pkg_apiproxy
+  svc_teamRuns --> pkg_tool_agent_team
   svc_terminals --> pkg_tool_terminal
   svc_tokenMeter --> pkg_compaction_basic
   svc_toolResultPruner --> pkg_compaction_basic
@@ -469,7 +485,11 @@ flowchart LR
 | `ctx.fs` | `seam` | [`fs`](../packages/fs/fs) | [`fs-local`](../packages/fs/fs-local), [`fs-sandbox`](../packages/fs/fs-sandbox), [`fs-e2b`](../packages/e2b/fs-e2b) | [`tool-fs`](../packages/fs/tool-fs) | [`fs-observation-policy`](../packages/fs/fs-observation-policy) | tool-fs 通过 ctx.fs 执行读取／写入／编辑；fs-sandbox 按共享沙箱模式限制变更；fs-observation-policy 通过 fs/* 事件门禁贡献基于观测状态的检查。 |
 | `ctx.compaction` | `seam` | [`compaction`](../packages/compaction/compaction) | [`compaction-basic`](../packages/compaction/compaction-basic) | [`compaction-basic`](../packages/compaction/compaction-basic) | - | 基础后端消费步骤后的压力事件和请求错误恢复事件；不存在面向模型的压缩工具。 |
 | `ctx.subagents` | `seam` | [`subagent`](../packages/subagent/subagent) | [`subagent-spawn-in-process`](../packages/subagent/subagent-spawn-in-process), [`subagent-fork-in-process`](../packages/subagent/subagent-fork-in-process), [`subagent-acp`](../packages/subagent/subagent-acp), [`subagent-codex`](../packages/subagent/subagent-codex), [`subagent-claude-code`](../packages/subagent/subagent-claude-code), [`subagent-dsh-sdk`](../packages/subagent/subagent-dsh-sdk) | [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-subagent-control`](../packages/subagent/tool-subagent-control), [`tool-ralph`](../packages/workflow/tool-ralph) | - | 提供方实现传输；该服务还负责可选的、基于 Activation 的延续编排，tool-subagent 选择一次性或可延续委派，tool-subagent-control 传递后续消息，而 tool-ralph 要求一条全新的结构化输出路由。 |
-| `ctx.agentTeams` | `core` | `agent-team` | - | `tool-agent-team` | - | 负责隐式 Root roster、持久 peer mailbox、共享任务 DAG 与 continuable child 生命周期；tool-agent-team 提供作用域化模型策略和控制工具。 |
+| `ctx.agentTeams` | `core` | [`experimental-agent-team`](../packages/experimental/agent-team) | - | [`experimental-tool-agent-team`](../packages/experimental/tool-agent-team) | - | 迁移期间，为显式示例保留历史隐式 Root roster、持久 peer mailbox、共享任务 DAG 与 continuable child 生命周期 |
+| `ctx.teamRuns` | `core` | [`agent-team`](../packages/collaboration/agent-team) | - | [`tool-agent-team`](../packages/collaboration/tool-agent-team) | - | 负责基于 Lead 日志的 TeamRun 重放、精确组队状态、专家尝试容量、公开协作与通用任务 DAG；tool-agent-team 提供作用域化模型命令，不保存另一份状态副本 |
+| `ctx.expertCatalog` | `core` | [`expert-catalog`](../packages/collaboration/expert-catalog) | - | [`expert-runtime`](../packages/collaboration/expert-runtime) | - | 将一个精确的 ExpertBlueprint 修订版解析为经验证的预设、skill、插件、模型、工具与执行绑定，并生成规范摘要 |
+| `ctx.expertRuntime` | `core` | [`expert-runtime`](../packages/collaboration/expert-runtime) | - | - | - | 提交 Lead 侧能力绑定，创建或恢复完全匹配的可延续子 agent，并在不重复接收初始提示词的前提下结算所属 P1 配置尝试 |
+| `ctx.teamOrchestrator` | `core` | [`team-orchestrator`](../packages/collaboration/team-orchestrator) | - | `apiproxy` | - | 为每个接纳的任务生成画像、提交精确不可变 roster 与 Team Charter，并以失败关闭方式驱动专家创建直至达到完整计划人数 |
 | `ctx.jobs` | `seam` | [`jobs`](../packages/jobs/jobs) | [`jobs-local`](../packages/jobs/jobs-local) | [`tool-bash`](../packages/shell/tool-bash), [`tool-terminal`](../packages/terminal/tool-terminal), [`tool-subagent`](../packages/subagent/tool-subagent), [`tool-jobs`](../packages/jobs/tool-jobs) | - | 生产方（后台 bash、PTY 发送和 subagent 委派）登记正在运行的工作；tool-jobs 是面向模型的控制器，用于读取、列出和终止这些工作；jobs-local 是进程本地注册表。 |
 | `ctx.web` | `seam` | [`web`](../packages/web/web) | [`web-search-exa`](../packages/web/web-search-exa), [`web-search-perplexity`](../packages/web/web-search-perplexity), [`web-search-deepseek`](../packages/web/web-search-deepseek), [`web-fetch-http`](../packages/web/web-fetch-http) | [`tool-web`](../packages/web/tool-web) | - | 搜索和抓取提供方注册到同一个 ctx.web seam；tool-web 负责稳定的面向模型名称。 |
 | `ctx.spillStore` | `seam` | [`spill`](../packages/spill/spill) | [`spill-local`](../packages/spill/spill-local) | [`spill-policy`](../packages/spill/spill-policy) | - | 后端保存过大的工具文本，并返回面向模型的定位信息和取回提示；spill-policy 是 tools/post-execute 消费方，负责决定何时 spill。 |

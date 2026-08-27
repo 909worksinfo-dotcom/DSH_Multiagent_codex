@@ -12,10 +12,15 @@ function fakePanels(): PanelActions {
   return {
     setSidebar: vi.fn(),
     setDetails: vi.fn(),
+    setCollaboration: vi.fn(),
     toggleSidebar: vi.fn(),
     setNarrow: vi.fn(),
     openDetails: vi.fn(),
     closeDetails: vi.fn(),
+    openCollaboration: vi.fn(),
+    closeCollaboration: vi.fn(),
+    enterConversation: vi.fn(),
+    enterCollaboration: vi.fn(),
   }
 }
 
@@ -28,10 +33,18 @@ describe('LayoutController', () => {
     service.toggleSidebar()
     service.openDetails()
     service.closeDetails()
+    service.openCollaboration()
+    service.closeCollaboration()
+    service.enterCollaboration()
+    service.enterConversation()
 
     expect(panels.toggleSidebar).toHaveBeenCalledTimes(1)
     expect(panels.openDetails).toHaveBeenCalledTimes(1)
     expect(panels.closeDetails).toHaveBeenCalledTimes(1)
+    expect(panels.openCollaboration).toHaveBeenCalledTimes(1)
+    expect(panels.closeCollaboration).toHaveBeenCalledTimes(1)
+    expect(panels.enterCollaboration).toHaveBeenCalledTimes(1)
+    expect(panels.enterConversation).toHaveBeenCalledTimes(1)
     expect(panels.setSidebar).not.toHaveBeenCalled()
     expect(panels.setDetails).not.toHaveBeenCalled()
   })
@@ -41,6 +54,10 @@ describe('LayoutController', () => {
     expect(() => { service.toggleSidebar() }).toThrow(/panel actions not wired/)
     expect(() => { service.openDetails() }).toThrow(/panel actions not wired/)
     expect(() => { service.closeDetails() }).toThrow(/panel actions not wired/)
+    expect(() => { service.openCollaboration() }).toThrow(/panel actions not wired/)
+    expect(() => { service.closeCollaboration() }).toThrow(/panel actions not wired/)
+    expect(() => { service.enterConversation() }).toThrow(/panel actions not wired/)
+    expect(() => { service.enterCollaboration() }).toThrow(/panel actions not wired/)
   })
 
   it('re-attach overwrites the stale action set (entry re-register)', () => {

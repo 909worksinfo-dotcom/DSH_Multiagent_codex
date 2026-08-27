@@ -38,6 +38,7 @@ This table connects model-visible tool names to the plugin package and service s
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`, `ctx.systemPrompt`, `a live continuable in-process child Agent` | `tool/call`, `tool/result`, `a user-role message in the direct parent session` | - | Registered per continuable in-process child rather than globally, so this schema is visible only inside such a child and survives its global `toolFilter`. The same contribution installs the child-scoped `tool:report` prompt section, which this catalog does not render. The parent-facing `send_message` tool is installed independently. |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`, `job_list`, `job_output` | `ctx.tools`, `ctx.jobs`, `ctx.systemPrompt` | `tool/call`, `tool/result`, `user/message via agent.inject() for background completion notices` | - | The kind-agnostic background-job controller: background bash commands, PTY sends, and subagents are read, listed, and killed through the same three tools. Loading the plugin attaches the controller that arms producers' `ctx.jobs.start()`. |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`, `interrupt_agent`, `list_agents`, `send_message`, `spawn_teammate`, `team_task_create`, `team_task_get`, `team_task_list`, `team_task_update`, `wait_agent` | `ctx.tools`, `ctx.systemPrompt`, `ctx.agentTeams`, `an exact live Team member Agent` | `tool/call`, `team/member`, `team/message/queued`, `team/message/delivered`, `team/task`, `tool/result` | - | All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names. |
+| `@deepseek-ai/dsh-tool-agent-team` | `collaboration_artifact_read`, `collaboration_artifact_write`, `collaboration_complete`, `collaboration_control`, `collaboration_controller_get`, `collaboration_decision_write`, `collaboration_get`, `collaboration_quality_update`, `collaboration_send`, `collaboration_task_create`, `collaboration_task_get`, `collaboration_task_list`, `collaboration_task_update` | `ctx.tools`, `ctx.systemPrompt`, `ctx.teamRuns`, `an exact live TeamRun member Agent` | `tool/call`, `collaboration/task`, `collaboration/message`, `tool/result` | - | All thirteen tools are scoped to admitted stable TeamRun members. They read one authoritative service, publish only public typed collaboration records, and mutate the compare-and-set task DAG; formation and ExpertBlueprint-bound child activation remain controller-owned. |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`, `owning Agent session` | `tool/call`, `todo/write`, `tool/result` | - | todo_write is session-owned state; UIs render the latest todo/write event as a checklist. `allowParallelInProgress` is required with no default, so the catalog states its choice: `true`, whose description invites several `in_progress` items. A deployment choosing `false` receives the same tool with a description asking for exactly one active task. |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`, `ctx.workflowEngine`, `ctx.systemPrompt`, `a calling Agent (exec.agent parents the script children)` | `tool/call`, `tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`, `web_search` | `ctx.tools`, `ctx.web`, `ctx.systemPrompt` | `tool/call`, `tool/result` | - | web_search and web_fetch keep provider selection behind ctx.web so model-visible schemas stay stable across backend swaps. |
@@ -2023,6 +2024,532 @@ Wait for the next teammate status, mailbox, or shared-task change after this cal
 Source: [`packages/experimental/tool-agent-team/src/index.ts`](../packages/experimental/tool-agent-team/src/index.ts)
 
 All ten tools are scoped to implicit Team Leads and durable teammates. The shipped dsh-base bundle keeps the package disabled; the documented Agent Teams profile patch enables it while disabling the legacy continuable-child control names.
+
+<a id="deepseek-aidsh-tool-agent-team"></a>
+
+## `@deepseek-ai/dsh-tool-agent-team`
+
+### `collaboration_artifact_read`
+
+Read one complete artifact body through current TeamRun membership authority.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "artifact_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "artifact_id"
+  ]
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_artifact_write`
+
+Write one bounded versioned artifact and publish only body-free metadata to the public timeline.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "artifact_id": {
+      "type": "string",
+      "description": "Existing artifact id for an update; omit to create."
+    },
+    "expected_version": {
+      "type": "integer",
+      "description": "Zero to create or the current version to update."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "document",
+        "code",
+        "dataset",
+        "evidence",
+        "analysis",
+        "product_spec",
+        "design",
+        "test_report",
+        "final_delivery"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "body": {
+      "type": "string",
+      "description": "Complete artifact body; never included in collaboration_get."
+    },
+    "media_type": {
+      "type": "string"
+    },
+    "task_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "review",
+        "accepted",
+        "superseded"
+      ]
+    }
+  },
+  "required": [
+    "expected_version",
+    "kind",
+    "title",
+    "body",
+    "media_type",
+    "status"
+  ]
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_complete`
+
+Lead-only atomic completion after all tasks and public review evidence are complete.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "thread_id": {
+      "type": "string",
+      "description": "Public delivery thread id. Defaults to main."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Optional completed task summarized by the delivery."
+    },
+    "decision_id": {
+      "type": "string",
+      "description": "Optional public decision summarized by the delivery."
+    },
+    "artifact_id": {
+      "type": "string",
+      "description": "Optional public artifact delivered to the user."
+    },
+    "content": {
+      "type": "string",
+      "description": "Complete user-safe final delivery."
+    }
+  },
+  "required": [
+    "content"
+  ]
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_control`
+
+Lead-only atomic reassign, rework, or replan action with task CAS, decision ledger, and public evidence.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "expected_revision": {
+      "type": "integer"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "expected_task_revision": {
+      "type": "integer"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "reassign",
+        "rework",
+        "replan"
+      ]
+    },
+    "owner": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Concise user-safe correction rationale."
+    }
+  },
+  "required": [
+    "expected_revision",
+    "task_id",
+    "expected_task_revision",
+    "action",
+    "rationale"
+  ]
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_controller_get`
+
+Read deterministic health, stalled tasks, duplicate work, quality failures, and recommended Lead actions.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_decision_write`
+
+Lead-only compare-and-set arbitration that atomically publishes a public decision record.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "decision_id": {
+      "type": "string",
+      "description": "Existing decision id for an update; omit to create."
+    },
+    "expected_version": {
+      "type": "integer"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "rejected",
+        "revise",
+        "unresolved",
+        "reassign",
+        "rework",
+        "replan"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Concise user-safe rationale, never private reasoning."
+    },
+    "task_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "artifact_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "expected_version",
+    "subject",
+    "outcome",
+    "summary",
+    "rationale"
+  ]
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_get`
+
+Read the authoritative TeamRun lifecycle, plan count, roster attempts, capacity, and failure.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_quality_update`
+
+Lead-only formal quality result over one materialized Charter gate.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "gate_id": {
+      "type": "string"
+    },
+    "expected_version": {
+      "type": "integer"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "artifact_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "gate_id",
+    "expected_version",
+    "status",
+    "summary"
+  ]
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_send`
+
+Publish one typed public TeamRun message. This never accepts private reasoning or chain-of-thought.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "description": "Public statement category; ledger receipts use their owning tools.",
+      "enum": [
+        "task",
+        "inform",
+        "proposal",
+        "request_help",
+        "challenge",
+        "response",
+        "review",
+        "handoff",
+        "blocked",
+        "completion_request",
+        "status"
+      ]
+    },
+    "thread_id": {
+      "type": "string",
+      "description": "Required explicit dispute thread for challenge/response; ordinary messages default to main."
+    },
+    "targets": {
+      "type": "array",
+      "description": "Exactly one explicit participant for challenge/response; otherwise protocol-allowed names or lead.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Optional current non-deleted task reference."
+    },
+    "challenge_id": {
+      "type": "string",
+      "description": "Optional challenge reference."
+    },
+    "decision_id": {
+      "type": "string",
+      "description": "Optional decision reference."
+    },
+    "artifact_id": {
+      "type": "string",
+      "description": "Optional artifact reference."
+    },
+    "content": {
+      "type": "string",
+      "description": "Concise user-safe public content."
+    }
+  },
+  "required": [
+    "kind",
+    "content"
+  ]
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_task_create`
+
+Create one unowned pending task with dependencies and generic advisory resource scopes.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "subject": {
+      "type": "string",
+      "description": "Concise task title."
+    },
+    "description": {
+      "type": "string",
+      "description": "Complete objective and acceptance information."
+    },
+    "blocked_by": {
+      "type": "array",
+      "description": "Existing task ids that must complete first.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resource_scopes": {
+      "type": "array",
+      "description": "Generic advisory ownership prefixes.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "subject",
+    "description"
+  ]
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_task_get`
+
+Read one complete latest TeamRun task value before changing or executing it.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "TeamRun task id."
+    }
+  },
+  "required": [
+    "task_id"
+  ]
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_task_list`
+
+List current TeamRun tasks with revisions, readiness, dependencies, ownership, and advisory conflicts.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "cursor": {
+      "type": "integer",
+      "description": "Zero-based result offset. Defaults to 0."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Number of rows, 1 through 100. Defaults to 50."
+    }
+  }
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_task_update`
+
+Compare-and-set one TeamRun task action using the latest task revision.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "TeamRun task id."
+    },
+    "expected_revision": {
+      "type": "integer",
+      "description": "Current task revision."
+    },
+    "action": {
+      "type": "string",
+      "description": "Task transition to apply.",
+      "enum": [
+        "claim",
+        "release",
+        "edit",
+        "set_dependencies",
+        "complete",
+        "reopen",
+        "reassign",
+        "delete"
+      ]
+    },
+    "subject": {
+      "type": "string",
+      "description": "Replacement title for edit."
+    },
+    "description": {
+      "type": "string",
+      "description": "Replacement details for edit."
+    },
+    "blocked_by": {
+      "type": "array",
+      "description": "Complete blocker list for set_dependencies.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resource_scopes": {
+      "type": "array",
+      "description": "Replacement advisory scopes for edit.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "owner": {
+      "type": "string",
+      "description": "Member name, lead, or empty for Lead-only reassign."
+    }
+  },
+  "required": [
+    "task_id",
+    "expected_revision",
+    "action"
+  ]
+}
+```
+
+Source: [`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+All thirteen tools are scoped to admitted stable TeamRun members. They read one authoritative service, publish only public typed collaboration records, and mutate the compare-and-set task DAG; formation and ExpertBlueprint-bound child activation remain controller-owned.
 
 <a id="deepseek-aidsh-tool-todo"></a>
 

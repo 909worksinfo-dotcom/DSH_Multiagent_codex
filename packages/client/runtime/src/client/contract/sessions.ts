@@ -35,6 +35,12 @@ export interface ISessions {
    */
   readonly searchResultLimit: number
   /**
+   * Create a host session and publish it to the list before resolving.
+   * @param opts - optional workspace, directory, or preallocated identity.
+   * @returns the new session identity.
+   */
+  create(opts?: { workspaceId?: import('@deepseek-ai/dsh-api-remotes/client').WorkspaceId; cwd?: string; sessionId?: SessionId }): Promise<SessionId>
+  /**
    * Select a session as current.
    * @param id - session id (must exist in the list; unknown ids fail loud).
    */

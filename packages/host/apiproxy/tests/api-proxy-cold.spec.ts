@@ -727,6 +727,53 @@ describe('degenerate composition (no persistence, no factory)', () => {
 })
 
 describe('sessions.prompt synchronous rejection', () => {
+  it('keeps the first ordinary prompt in daily chat and does not form a TeamRun', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(UserQuestionService)
+    const session = ctx.sessions.create(sid('main-team-task'))
+    const followup = vi.fn()
+    const agent = { id: session.id, session, status: 'idle', ctx, followup, steer: followup } as unknown as Agent
+    ctx.agents.register(agent)
+    const orchestrate = vi.fn()
+    ctx.provide('teamOrchestrator', { orchestrate } as never)
+    const api = createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
+
+    const response = await api.sessions.prompt(request({
+      sessionId: session.id,
+      mode: 'queue',
+      content: [{ type: 'text' as const, text: '分析需求并完成前后端开发和测试' }],
+    }))
+
+    expect(response.result).toEqual({ ok: true, value: { accepted: true } })
+    expect(orchestrate).not.toHaveBeenCalled()
+    expect(followup).toHaveBeenCalledOnce()
+  })
+
+  it('does not let a collaboration-orchestrator failure affect daily chat', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(AgentRegistry)
+    await ctx.plugin(UserQuestionService)
+    const session = ctx.sessions.create(sid('main-team-failure'))
+    const followup = vi.fn()
+    ctx.agents.register({ id: session.id, session, status: 'idle', ctx, followup, steer: followup } as unknown as Agent)
+    const orchestrate = vi.fn(() => Promise.reject(new Error('expert unavailable')))
+    ctx.provide('teamOrchestrator', { orchestrate } as never)
+    const api = createApiProxy(ctx, { defaultModelSelection: () => ({ provider: 'p', model: 'm' }), cwd: '/tmp' })
+
+    const response = await api.sessions.prompt(request({
+      sessionId: session.id,
+      mode: 'queue',
+      content: [{ type: 'text' as const, text: 'Build and test the product' }],
+    }))
+
+    expect(response.result).toEqual({ ok: true, value: { accepted: true } })
+    expect(orchestrate).not.toHaveBeenCalled()
+    expect(followup).toHaveBeenCalledOnce()
+  })
+
   it('maps a synchronous send throw (disposed/invalid input) to agent-busy with the reason attached', async () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)

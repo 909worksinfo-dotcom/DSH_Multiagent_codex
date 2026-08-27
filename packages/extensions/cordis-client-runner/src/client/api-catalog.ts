@@ -451,7 +451,11 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ChatConversationViewNode',
-    declaration: 'export interface ChatConversationViewNode extends ConversationViewNode {\n    readonly target: \'chat\';\n    readonly anchorSeq: number;\n    readonly location: ConversationLocation;\n    readonly visibility: \'visible\' | \'hidden\';\n}',
+    declaration: 'export interface ChatConversationViewNode extends ConversationViewNode {\n    readonly target: \'chat\';\n    readonly anchorSeq: number;\n    readonly location: ConversationLocation;\n    readonly visibility: \'visible\' | \'hidden\';\n    readonly flow?: \'activity\';\n}',
+  },
+  {
+    name: 'ChatFlowItem',
+    declaration: 'export interface ChatFlowItem {\n    readonly key: string;\n    readonly mode: \'activity\' | \'regular\';\n    readonly nodeKeys: readonly string[];\n}',
   },
   {
     name: 'ChatLocationNodeIndex',
@@ -463,7 +467,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'ChatSnapshot',
-    declaration: 'export interface ChatSnapshot {\n    readonly order: readonly string[];\n    readonly nodes: ChatNodeStore;\n    readonly locations: ChatLocationNodeIndex;\n    readonly timeline: ConversationTimelineSnapshot;\n    readonly legacy: LegacyConversationSlice;\n}',
+    declaration: 'export interface ChatSnapshot {\n    readonly order: readonly string[];\n    readonly flow: readonly ChatFlowItem[];\n    readonly nodes: ChatNodeStore;\n    readonly locations: ChatLocationNodeIndex;\n    readonly timeline: ConversationTimelineSnapshot;\n    readonly legacy: LegacyConversationSlice;\n}',
   },
   {
     name: 'ChildrenDecl',

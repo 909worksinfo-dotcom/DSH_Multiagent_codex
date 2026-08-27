@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {
-  ChatConversationViewNode, ChatLocationNodeIndex, ChatNodeStore, ChatSnapshot,
+  ChatConversationViewNode, ChatFlowItem, ChatLocationNodeIndex, ChatNodeStore, ChatSnapshot,
   ConversationLocation, ConversationNode, ConversationTimelineSnapshot,
   ConversationViewBuilder, ConversationViewDefinition, LegacyConversationSlice,
   PartialAssistant, RunningToolCall,
@@ -15,6 +15,20 @@ const EMPTY_LIST: readonly never[] = []
 
 function sameReferences<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+function chatFlow(order: readonly string[], nodes: ChatNodeStore): readonly ChatFlowItem[] {
+  const flow: ChatFlowItem[] = []
+  for (const nodeKey of order) {
+    const mode = nodes.get(nodeKey)?.flow === 'activity' ? 'activity' : 'regular'
+    const previous = flow.at(-1)
+    if (mode === 'activity' && previous?.mode === 'activity') {
+      flow[flow.length - 1] = { ...previous, nodeKeys: [...previous.nodeKeys, nodeKey] }
+    } else {
+      flow.push({ key: `${mode}:${nodeKey}`, mode, nodeKeys: [nodeKey] })
+    }
+  }
+  return flow
 }
 
 class MutableChatNodeStore implements ChatNodeStore {
@@ -480,6 +494,7 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
   private readonly legacy = new LegacySliceBuilder()
   private readonly referenceLabels = new ReferenceLabelProjector()
   private order: readonly string[] = EMPTY_KEYS
+  private flow: readonly ChatFlowItem[] = EMPTY_LIST
   readonly empty: ChatSnapshot
 
   constructor() {
@@ -493,6 +508,7 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
     const nodes = this.referenceLabels.replace(input.nodes)
     this.store.replace(nodes)
     this.order = orderedVisible(nodes).map(node => node.key)
+    this.flow = chatFlow(this.order, this.store)
     this.locations.rebuild(this.order, this.store)
     return this.snapshot(input.timeline, this.legacy.replace(nodes, input.timeline))
   }
@@ -509,6 +525,7 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
       const nodeStructural = previous === undefined
         || previous.anchorSeq !== node.anchorSeq
         || previous.visibility !== node.visibility
+        || previous.flow !== node.flow
         || locationIdentity(previous.location) !== locationIdentity(node.location)
       structural ||= nodeStructural
       if (!nodeStructural) contentOnly.push(node)
@@ -517,6 +534,7 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
     if (structural) {
       const next = orderedVisible(this.store.values()).map(node => node.key)
       this.order = sameReferences(this.order, next) ? this.order : next
+      this.flow = chatFlow(this.order, this.store)
       this.locations.rebuild(this.order, this.store)
     }
     this.locations.touch(contentOnly)
@@ -529,6 +547,7 @@ export class ChatSnapshotBuilder implements ConversationViewBuilder<ChatConversa
   ): ChatSnapshot {
     return {
       order: this.order,
+      flow: this.flow,
       nodes: this.store,
       locations: this.locations,
       timeline,

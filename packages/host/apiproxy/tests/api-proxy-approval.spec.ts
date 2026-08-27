@@ -80,7 +80,7 @@ async function waitForCount(mux: { frames: MuxFrame[] }, type: MuxFrame['type'],
   expect(mux.frames.filter(frame => frame.type === type).length).toBeGreaterThanOrEqual(count)
 }
 
-function answer(rpcId: RpcId, sessionId: unknown, approvalId: ApprovalRequestId, outcome: 'allowed-once' | 'rejected'): Parameters<ApiProxy['respond']>[0] {
+function answer(rpcId: RpcId, sessionId: unknown, approvalId: ApprovalRequestId, outcome: 'allowed-once' | 'allowed-for-turn' | 'rejected'): Parameters<ApiProxy['respond']>[0] {
   return { type: 'client-response', rpcId, result: { ok: true, value: { sessionId, approvalId, outcome } } }
 }
 
@@ -106,6 +106,26 @@ describe('approval pending registry', () => {
     // The question settled: a duplicate answer is late, not re-decidable.
     const dup = await api.respond(answer(envelope.rpcId, requested.sessionId, requested.approvalId, 'rejected'))
     expect(dup).toEqual({ accepted: false, reason: 'not-pending' })
+    abort.abort()
+  })
+
+  it('round-trips allowed-for-turn → resolved broadcast', async () => {
+    const { ctx, api } = await harness()
+    const abort = new AbortController()
+    const mux = openMux(api, abort)
+    const agent = agentOf(ctx)
+
+    const asked = ctx.approval.request({ agent, toolName: 'write', reason: 'same operation' })
+    const requested = requestedOf(await mux.waitFor('approval/requested'))
+    expect(requested).toMatchObject({ toolName: 'write', reason: 'same operation', sessionId: agent.session.id })
+
+    const envelope = mux.envelopes.find(e => e.payload.type === 'approval/requested') as RpcRequest<MuxFrame>
+    const receipt = await api.respond(answer(envelope.rpcId, requested.sessionId, requested.approvalId, 'allowed-for-turn'))
+    expect(receipt).toEqual({ accepted: true })
+    await expect(asked).resolves.toBe('allowed-for-turn')
+
+    const resolved = await mux.waitFor('approval/resolved')
+    expect(resolved).toMatchObject({ approvalId: requested.approvalId, outcome: 'allowed-for-turn' })
     abort.abort()
   })
 

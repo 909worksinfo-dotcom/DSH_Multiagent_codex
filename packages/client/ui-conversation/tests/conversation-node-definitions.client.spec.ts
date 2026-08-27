@@ -15,9 +15,11 @@ import { retryDefinition } from '../src/client/conversation-nodes/retry.ts'
 import { toolDefinition } from '../src/client/conversation-nodes/tool.ts'
 import { turnErrorDefinition } from '../src/client/conversation-nodes/turn-error.ts'
 import { turnMaxTokensDefinition } from '../src/client/conversation-nodes/turn-max-tokens.ts'
+import { turnSummaryDefinition } from '../src/client/conversation-nodes/turn-summary.ts'
 import { turnTailDefinition } from '../src/client/conversation-nodes/turn-tail.ts'
 import type {
-  AssistantChatData, ManualCompactionChatData, RetryChatData, ToolChatData, TurnTailChatData,
+  AssistantChatData, ManualCompactionChatData, RetryChatData, ToolChatData, TurnSummaryChatData,
+  TurnTailChatData,
 } from '../src/client/contract/chat-nodes.ts'
 
 const DEFINITIONS: readonly ConversationNodeDefinition[] = [
@@ -31,6 +33,7 @@ const DEFINITIONS: readonly ConversationNodeDefinition[] = [
   retryDefinition,
   turnErrorDefinition,
   turnMaxTokensDefinition,
+  turnSummaryDefinition,
   turnTailDefinition,
 ]
 
@@ -130,6 +133,7 @@ describe('built-in conversation node Definitions', () => {
     ])
     const runningSnapshot = snapshot(value)
     const running = node(runningSnapshot, 'assistant-step')
+    expect(running?.flow).toBeUndefined()
     expect(running?.data).toMatchObject({ status: 'running', blocks: [{ kind: 'text', text: 'streaming' }] })
     const order = runningSnapshot.order
 
@@ -282,6 +286,7 @@ describe('built-in conversation node Definitions', () => {
     ])
     const runningSnapshot = snapshot(value)
     const running = node(runningSnapshot, 'tool-call')
+    expect(running?.flow).toBe('activity')
     expect((running?.data as ToolChatData).root).toMatchObject({ callId: 'root', name: 'code' })
     const order = runningSnapshot.order
 
@@ -297,6 +302,53 @@ describe('built-in conversation node Definitions', () => {
     expect(settled?.key).toBe(running?.key)
     expect(settledSnapshot.order).toBe(order)
     expect((settled?.data as ToolChatData).root).toMatchObject({ kind: 'tool-result', callId: 'root' })
+
+    value.append(at(5, 'step/end', { turn: 1, step: 1 }))
+    value.append(at(6, 'turn/end', { turn: 1, reason: { kind: 'completed' } }))
+    value.flush()
+    const completedSnapshot = snapshot(value)
+    expect(node(completedSnapshot, 'tool-call')?.visibility).toBe('visible')
+    expect(node(completedSnapshot, 'turn-summary')).toBeUndefined()
+
+    const multiTool = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'step/start', { turn: 1, step: 1 }),
+      at(3, 'tool/call', { turn: 1, step: 1, callId: 'read-1', name: 'read', arguments: '{}' }),
+      at(4, 'tool/call', { turn: 1, step: 1, callId: 'read-2', name: 'read', arguments: '{}' }),
+      at(5, 'tool/call', { turn: 1, step: 1, callId: 'edit-1', name: 'edit', arguments: '{}' }),
+      at(6, 'step/end', { turn: 1, step: 1 }),
+      at(7, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    expect((node(snapshot(multiTool), 'turn-summary')?.data as TurnSummaryChatData).calls).toEqual([
+      { name: 'edit', label: 'Edit', count: 1 },
+    ])
+    expect(snapshot(multiTool).nodes.values().filter(value => value.kind === 'tool-call' && value.visibility === 'visible')).toHaveLength(2)
+
+    const todo = assembler([
+      at(1, 'turn/start', { turn: 1 }),
+      at(2, 'step/start', { turn: 1, step: 1 }),
+      at(3, 'tool/call', {
+        turn: 1,
+        step: 1,
+        callId: 'todo',
+        name: 'todo_write',
+        arguments: '{"todos":[]}',
+      }),
+      at(4, 'tool/result', {
+        turn: 1,
+        step: 1,
+        message: toolResult('todo', 'done'),
+      }, { surfaceOp: 'append' }),
+      at(5, 'step/end', { turn: 1, step: 1 }),
+      at(6, 'turn/end', { turn: 1, reason: { kind: 'completed' } }),
+    ])
+    const todoSnapshot = snapshot(todo)
+    expect((node(todoSnapshot, 'tool-call')?.data as ToolChatData).root).toMatchObject({
+      kind: 'tool-result',
+      call: { name: 'todo_write' },
+    })
+    expect(node(todoSnapshot, 'tool-call')?.flow).toBe('activity')
+    expect(node(todoSnapshot, 'turn-summary')).toBeUndefined()
 
     const history = assembler([
       at(14, 'tool/code-dispatch-start', {
@@ -521,6 +573,7 @@ describe('built-in conversation node Definitions', () => {
       }, { surfaceOp: 'append' }),
     ])
 
+    expect(node(snapshot(value), 'context')?.flow).toBe('activity')
     expect(node(snapshot(value), 'context')?.data).toMatchObject({
       kind: 'context',
       provenance: { role: 'inject', label: 'demo-skill' },

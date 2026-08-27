@@ -60,6 +60,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * framework hooks of the `session-maybe` scope.
      */
     'conversation': { kind: 'single'; scope: 'session-maybe'; owner: ConvOwnerProps }
+    /** Dedicated root-scoped multi-agent task launcher and status workspace. */
+    'collaboration.workspace': { kind: 'single'; scope: 'root'; owner: CollaborationWorkspaceOwnerProps }
     /**
      * The right details column, shown when the layout opens it. OCCUPIED by
      * ui-conversation's DetailsPanel, which declares the tool-details seat
@@ -70,6 +72,8 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
      * `session` scope, and `ctx.layout` owns whether the column is open.
      */
     'details': { kind: 'single'; scope: 'session'; owner: DetailsOwnerProps }
+    /** Root-scoped right dock for the authoritative multi-agent workspace. */
+    'collaboration.dock': { kind: 'single'; scope: 'root'; owner: CollaborationDockOwnerProps }
     /**
      * Frame-wide floating layer, above every column and outside their scroll
      * containers. Deliberately generic and unowned by any feature: a badge, a
@@ -101,8 +105,17 @@ export interface SidebarOwnerProps {
 /** Conversation owner share: business state and actions belong to the registrant. */
 export interface ConvOwnerProps {}
 
+/** Empty owner share for the dedicated collaboration workspace. */
+export interface CollaborationWorkspaceOwnerProps {}
+
 /** Details owner share: empty — sessionId arrives as a framework-standard prop. */
 export interface DetailsOwnerProps {}
+
+/** Collaboration dock owner share from the frame's resolved column geometry. */
+export interface CollaborationDockOwnerProps {
+  open: boolean
+  width: number
+}
 
 /** Required services (cordis fiber inject — the loader passes all module exports as an object plugin). */
 export const inject = ['slots', 'theme']
@@ -122,7 +135,9 @@ export function apply(ctx: ClientContext): void {
       children: {
         'sidebar': { kind: 'single', scope: 'root' },
         'conversation': { kind: 'single', scope: 'session-maybe' },
+        'collaboration.workspace': { kind: 'single', scope: 'root' },
         'details': { kind: 'single', scope: 'session' },
+        'collaboration.dock': { kind: 'single', scope: 'root' },
         'shell.overlay': { kind: 'list', scope: 'root' },
       },
       // Exclusive store: the factory itself — the framework instantiates per

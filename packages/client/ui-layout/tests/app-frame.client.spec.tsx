@@ -60,7 +60,9 @@ function mountFrame() {
     slotCalls.push({ key, props: owner })
     if (key === 'sidebar') return <div data-testid="sidebar-content" />
     if (key === 'conversation') return <div data-testid="center-content" />
+    if (key === 'collaboration.workspace') return <div data-testid="collaboration-workspace-content" />
     if (key === 'details') return <div data-testid="details-content" />
+    if (key === 'collaboration.dock') return <div data-testid="collaboration-content" />
     if (key === 'conversation.empty') return <div data-testid="empty-content" />
     return <div data-testid="other-content" />
   }) as AppFrameProps['renderSlot']
@@ -96,9 +98,15 @@ function mountFrame() {
 }
 
 function tracks(frame: HTMLElement): number[] {
-  const m = /^(\d+)px minmax\(0, 1fr\) (\d+)px$/.exec(frame.style.gridTemplateColumns)
+  const m = /^(\d+)px minmax\(0, 1fr\) (\d+)px (\d+)px$/.exec(frame.style.gridTemplateColumns)
   if (m === null) throw new Error(`unexpected template: ${frame.style.gridTemplateColumns}`)
   return [Number(m[1]), Number(m[2])]
+}
+
+function collaborationTrack(frame: HTMLElement): number {
+  const m = /^(\d+)px minmax\(0, 1fr\) (\d+)px (\d+)px$/.exec(frame.style.gridTemplateColumns)
+  if (m === null) throw new Error(`unexpected template: ${frame.style.gridTemplateColumns}`)
+  return Number(m[3])
 }
 
 function drag(handle: Element, fromX: number, toX: number): void {
@@ -163,6 +171,17 @@ describe('AppFrame', () => {
     expect(slotCalls.map(c => c.key)).toContain('conversation')
   })
 
+  it('renders the dedicated collaboration workspace instead of the daily conversation', () => {
+    const { instance, queryByTestId, getByTestId } = mountFrame()
+    expect(getByTestId('center-content')).toBeTruthy()
+    act(() => { instance.actions.enterCollaboration() })
+    expect(getByTestId('collaboration-workspace-content')).toBeTruthy()
+    expect(queryByTestId('center-content')).toBeNull()
+    act(() => { instance.actions.enterConversation() })
+    expect(getByTestId('center-content')).toBeTruthy()
+    expect(queryByTestId('collaboration-workspace-content')).toBeNull()
+  })
+
   it('renders both column occupants before baselines settle (no loading gate)', () => {
     // No loading gate: a bare loading status reads worse than the shell's own
     // pending rendering — both occupants mount from first paint.
@@ -170,6 +189,7 @@ describe('AppFrame', () => {
     const { slotCalls } = mountFrame()
     expect(slotCalls.map(c => c.key)).toContain('conversation')
     expect(slotCalls.map(c => c.key)).toContain('details')
+    expect(slotCalls.map(c => c.key)).toContain('collaboration.dock')
   })
 
   it('ignores unselected states and closes only when the Session id changes', () => {
@@ -249,6 +269,19 @@ describe('AppFrame', () => {
     expect(tracks(frame)).toEqual([280, 0])
     expect(getByTestId('details-content')).toBeTruthy()
     expect(frame.hasAttribute('data-details-collapsed')).toBe(true)
+  })
+
+  it('opens collaboration as a fourth track, closes details, and resizes from its rendered edge', () => {
+    const { frame, instance, getByTestId } = mountFrame()
+    act(() => { instance.actions.openDetails(); instance.actions.openCollaboration() })
+    expect(tracks(frame)).toEqual([280, 0])
+    expect(collaborationTrack(frame)).toBe(440)
+    expect(getByTestId('collaboration-content')).toBeTruthy()
+    expect(frame.hasAttribute('data-collaboration-collapsed')).toBe(false)
+
+    const handles = frame.querySelectorAll('[class*="handle"]')
+    drag(handles[1]!, 1480, 1420)
+    expect(collaborationTrack(frame)).toBe(500)
   })
 
   it('closed sidebar keeps its compact rail with mounted slot content and collapsed owner props', () => {

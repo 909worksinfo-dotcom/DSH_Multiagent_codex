@@ -1,5 +1,6 @@
-// ChatView: the default conversation view — one stable keyed parent list over
-// final business Nodes, plus paging, pending steering and bottom-follow.
+// ChatView: the default conversation view — final business Nodes remain keyed,
+// with contiguous low-priority activity Nodes placed in bounded scrolling
+// groups, plus paging, pending steering and bottom-follow.
 // Each row dispatches through 'conversation.chat.node'; ui-tool owns the
 // tool-call renderer and its recursive root/subcall composition. A Host
 // open-path refusal from the injected opener is an in-page dialog here.
@@ -13,11 +14,12 @@
 // ChatNodeSeat subscribes to one Node key, so Assistant deltas and Tool
 // lifecycle updates replace only their own row without remounting it.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ConversationTimelineSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
 import { Button, IconChevronDownOutline14, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps, RenderMessageImages } from '../contract/slots.ts'
 import { PendingSteeringBubble } from './MessageItem.tsx'
+import { ActivityFlow } from './ActivityFlow.tsx'
 import { ChatNodeSeat } from './ChatNodeSeat.tsx'
 import { formatRunDuration } from './message-chrome.ts'
 import css from './ChatView.module.css'
@@ -161,6 +163,7 @@ export function ChatView({
 }: ChatViewSlotProps) {
   const order = useSession(s => s.chat.order)
   const nodeStore = useSession(s => s.chat.nodes)
+  const flowGroups = useSession(s => s.chat.flow)
   const timeline = useSession(s => s.chat.timeline)
   const inbox = useSession(s => s.queue)
   // Workspace root off the session list row: path summaries display relative to it.
@@ -412,6 +415,23 @@ export function ChatView({
     loadOlder()
   }
 
+  const renderFlowNodes = (nodeKeys: (typeof flowGroups)[number]['nodeKeys']) => nodeKeys.map(nodeKey => (
+    <ChatNodeSeat
+      key={nodeKey}
+      nodeKey={nodeKey}
+      useSession={useSession}
+      selectedCallId={selectedCallId}
+      cwd={cwd}
+      openFile={requestOpenFile}
+      inspectCall={inspectCall}
+      forkAt={forkAt}
+      renderMessageImages={renderMessageImages}
+      fileMentions={fileMentions}
+      renderSlot={renderSlot}
+      t={t}
+    />
+  ))
+
   return (
     <div className={css.root}>
       <div ref={listRef} className={css.scroll}>
@@ -429,21 +449,14 @@ export function ChatView({
               </button>
             </div>
           )}
-          {order.map(nodeKey => (
-            <ChatNodeSeat
-              key={nodeKey}
-              nodeKey={nodeKey}
-              useSession={useSession}
-              selectedCallId={selectedCallId}
-              cwd={cwd}
-              openFile={requestOpenFile}
-              inspectCall={inspectCall}
-              forkAt={forkAt}
-              renderMessageImages={renderMessageImages}
-              fileMentions={fileMentions}
-              renderSlot={renderSlot}
-              t={t}
-            />
+          {flowGroups.map(group => group.mode === 'activity' ? (
+            <ActivityFlow key={group.key} count={group.nodeKeys.length} t={t}>
+              {renderFlowNodes(group.nodeKeys)}
+            </ActivityFlow>
+          ) : (
+            <Fragment key={group.key}>
+              {renderFlowNodes(group.nodeKeys)}
+            </Fragment>
           ))}
           {/* No pending placeholders: questions (ui-user-questions) and approvals
               (ApprovalPanel) both take over the composer, so a flow card would

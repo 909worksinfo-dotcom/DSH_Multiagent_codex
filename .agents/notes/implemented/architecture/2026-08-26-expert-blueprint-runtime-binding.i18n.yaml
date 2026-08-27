@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-26-expert-blueprint-runtime-binding.md
+2026-08-26-expert-blueprint-runtime-binding.md: e05f5e02e191ebbb5349ac8045e5c06ccf409f91
+2026-08-26-expert-blueprint-runtime-binding.zh.md: f97acd7ceb602afed48ef8aea4909e031112fa9e

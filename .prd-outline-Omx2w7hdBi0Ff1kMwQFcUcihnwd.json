@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "identity": "user",
+  "data": {
+    "document": {
+      "content": "<fragment mode=\"outline\"><outline><h2 id=\"doxcnK9fEvc3mQGYyM95QZketZd\">Composer 组件清单</h2><h3 id=\"doxcngNFu2N4eIKo8UPYi0CL8ph\">1. 顶部挂载区</h3><h3 id=\"doxcnGFtKSLZR4rdJwtydRPk1cg\">2. 附件区</h3><h3 id=\"doxcnEzrLDfVJBTV7sOF7wCjkxd\">3. 输入区</h3><h3 id=\"doxcnCiHTEZaVqIohUi3n3wTj2e\">4. 底部工具栏</h3></outline></fragment>",
+      "document_id": "AMRydntseoxDYrx1A3kcXcMInyY",
+      "revision_id": 752
+    }
+  }
+}

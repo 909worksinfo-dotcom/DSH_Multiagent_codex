@@ -12,11 +12,11 @@
  * omits `subagentDepth` — cold resume trusts the persisted header's
  * `delegationDepth` as the monotone floor — and `outputSchema`, which belongs
  * to one activation's result contract rather than durable child composition.
- * Per-activation knobs such as `maxTokens` are omitted for the same reason as
- * `outputSchema`: they budget one activation. Cold resume requires the exact
- * live parent for authorization but reconstructs child options only from the
- * durable descriptor, so it neither restores the prior budget nor inherits
- * the parent's current one; the resumed route's defaults apply instead.
+ * `maxTokens` is retained because a continuable child may have an immutable
+ * per-request ceiling that must survive every activation. `outputSchema`
+ * remains activation-local. Cold resume requires the exact live parent for
+ * authorization but reconstructs child route and budget only from the durable
+ * descriptor rather than inheriting mutable current parent settings.
  *
  * @module @deepseek-ai/dsh-subagent/descriptor
  */
@@ -44,7 +44,7 @@ declare module '@deepseek-ai/dsh-session/types' {
  * Supporting another composition input is a deliberate version change, never
  * an implicit extra field.
  */
-export const SUBAGENT_DESCRIPTOR_VERSION = 2
+export const SUBAGENT_DESCRIPTOR_VERSION = 3
 
 /** Fields shared by every supported `subagent/descriptor` payload. */
 interface SubagentDescriptorBase {
@@ -76,6 +76,10 @@ export interface ContinuableSubagentDescriptorData extends SubagentDescriptorBas
   readonly agentProvider?: string
   /** Resolved child `agentOptions.model`, when one was declared. */
   readonly agentModel?: string
+  /** Resolved per-request output-token ceiling retained across activations. */
+  readonly agentMaxTokens?: number
+  /** Exact agent preset mounted for the child instead of inheriting its parent. */
+  readonly agentPreset?: string
   /** Per-child persona that shadows the deployment persona on resume. */
   readonly persona?: string
   /** Child tool scoping reapplied on resume. */
@@ -111,6 +115,10 @@ export interface ContinuableSubagentDescriptorInput extends SubagentDescriptorIn
   readonly agentProvider?: string
   /** Requested child `agentOptions.model`. */
   readonly agentModel?: string
+  /** Requested child `agentOptions.maxTokens`. */
+  readonly agentMaxTokens?: number
+  /** Exact agent preset requested for the child. */
+  readonly agentPreset?: string
   /** Requested per-child persona. */
   readonly persona?: string
   /** Requested child tool scoping. */
@@ -133,6 +141,8 @@ const CONTINUABLE_DESCRIPTOR_KEYS = new Set([
   ...DESCRIPTOR_BASE_KEYS,
   'agentProvider',
   'agentModel',
+  'agentMaxTokens',
+  'agentPreset',
   'persona',
   'toolFilter',
 ])
@@ -159,6 +169,16 @@ function optionalString(value: Record<string, unknown>, key: string): string | u
     throw new Error(`persisted subagent descriptor ${key} must be a string`)
   }
   return field
+}
+
+/** Read one optional positive safe integer from a persisted descriptor. */
+function optionalPositiveSafeInteger(value: Record<string, unknown>, key: string): number | undefined {
+  if (!Object.hasOwn(value, key)) return undefined
+  const field = value[key]
+  if (!Number.isSafeInteger(field) || (field as number) <= 0) {
+    throw new Error(`persisted subagent descriptor ${key} must be a positive safe integer`)
+  }
+  return field as number
 }
 
 /** Read one optional string-array field from a persisted tool restriction. */
@@ -231,6 +251,8 @@ function parseSubagentDescriptor(value: unknown): SubagentDescriptorData | undef
   }
   const agentProvider = optionalString(value, 'agentProvider')
   const agentModel = optionalString(value, 'agentModel')
+  const agentMaxTokens = optionalPositiveSafeInteger(value, 'agentMaxTokens')
+  const agentPreset = optionalString(value, 'agentPreset')
   const persona = optionalString(value, 'persona')
   const toolFilter = Object.hasOwn(value, 'toolFilter')
     ? parseToolFilter(value['toolFilter'])
@@ -242,6 +264,8 @@ function parseSubagentDescriptor(value: unknown): SubagentDescriptorData | undef
     label,
     ...agentProvider !== undefined ? { agentProvider } : {},
     ...agentModel !== undefined ? { agentModel } : {},
+    ...agentMaxTokens !== undefined ? { agentMaxTokens } : {},
+    ...agentPreset !== undefined ? { agentPreset } : {},
     ...persona !== undefined ? { persona } : {},
     ...toolFilter !== undefined ? { toolFilter } : {},
   }
@@ -283,6 +307,8 @@ export function snapshotSubagentDescriptor(input: SubagentDescriptorInput): Suba
       label: input.label,
       ...input.agentProvider !== undefined ? { agentProvider: input.agentProvider } : {},
       ...input.agentModel !== undefined ? { agentModel: input.agentModel } : {},
+      ...input.agentMaxTokens !== undefined ? { agentMaxTokens: input.agentMaxTokens } : {},
+      ...input.agentPreset !== undefined ? { agentPreset: input.agentPreset } : {},
       ...input.persona !== undefined ? { persona: input.persona } : {},
       ...input.toolFilter !== undefined ? { toolFilter: input.toolFilter } : {},
     }

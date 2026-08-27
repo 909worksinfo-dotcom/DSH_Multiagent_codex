@@ -42,7 +42,7 @@ export const ChatNodeSeat = memo(function ChatNodeSeat({
   const routedOwner = { ...owner, node: routedNode } as RoutedChatNodeOwner
   return (
     <div
-      className={css.flowItem}
+      className={routedNode.flow === 'activity' ? css.activityItem : css.flowItem}
       data-chat-anchor-key={routedNode.key}
       data-chat-flow-key={routedNode.key}
       data-chat-flow-kind={routedNode.kind}

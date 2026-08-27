@@ -42,6 +42,18 @@
       "path": "../../core/agent-default-model"
     },
     {
+      "path": "../../collaboration/agent-team"
+    },
+    {
+      "path": "../../collaboration/expert-catalog"
+    },
+    {
+      "path": "../../collaboration/expert-runtime"
+    },
+    {
+      "path": "../../collaboration/team-orchestrator"
+    },
+    {
       "path": "../../preset/agent-presets"
     },
     {

@@ -239,6 +239,192 @@ Types: [TokenUsage](subsystems/llm-streaming.md)
 
 Source: [`packages/core/session/src/types.ts:277`](../packages/core/session/src/types.ts)
 
+### `collaboration/*`
+
+<a id="collaborationartifact--log-only"></a>
+
+#### `collaboration/artifact` — log-only
+
+```ts persistence-catalog
+/** Commits one complete versioned artifact, including its restricted body. */
+'collaboration/artifact': TeamRunArtifactEventData
+```
+
+Source: [`packages/collaboration/agent-team/src/types.ts:834`](../packages/collaboration/agent-team/src/types.ts)
+
+<a id="collaborationdecision--log-only"></a>
+
+#### `collaboration/decision` — log-only
+
+```ts persistence-catalog
+/** Commits one independent Lead decision. */
+'collaboration/decision': TeamRunDecisionEventData
+```
+
+Source: [`packages/collaboration/agent-team/src/types.ts:836`](../packages/collaboration/agent-team/src/types.ts)
+
+<a id="collaborationexpertbinding--log-only"></a>
+
+#### `collaboration/expert/binding` — log-only
+
+```ts persistence-catalog
+/**
+ * Immutable Lead-side expert capability binding, required-on-read because
+ * provisioning recovery and every child activation validate against it.
+ */
+'collaboration/expert/binding': ExpertBindingEventData
+```
+
+Source: [`packages/collaboration/expert-runtime/src/types.ts:163`](../packages/collaboration/expert-runtime/src/types.ts)
+
+<a id="collaborationexpertdescriptor--log-only"></a>
+
+#### `collaboration/expert/descriptor` — log-only
+
+```ts persistence-catalog
+/**
+ * Immutable child-side expert descriptor, required-on-read because cold
+ * resume must reproduce and validate the exact original capability set.
+ */
+'collaboration/expert/descriptor': ExpertChildDescriptorEventData
+```
+
+Source: [`packages/collaboration/expert-runtime/src/types.ts:168`](../packages/collaboration/expert-runtime/src/types.ts)
+
+<a id="collaborationmember--log-only"></a>
+
+#### `collaboration/member` — log-only
+
+```ts persistence-catalog
+/**
+ * Commits one complete provisioning, active, or failed expert-attempt value;
+ * required-on-read because roster capacity and authority derive from it.
+ */
+'collaboration/member': TeamRunMemberEventData
+```
+
+Types: [TeamRunMemberEventData](subsystems/agent-team.md)
+
+Source: [`packages/collaboration/agent-team/src/types.ts:821`](../packages/collaboration/agent-team/src/types.ts)
+
+<a id="collaborationmessage--log-only"></a>
+
+#### `collaboration/message` — log-only
+
+```ts persistence-catalog
+/**
+ * Commits one user-visible public collaboration message after visibility selection;
+ * required-on-read because reconnect and delivery projections derive from it.
+ */
+'collaboration/message': TeamRunMessageEventData
+```
+
+Types: [TeamRunMessageEventData](subsystems/agent-team.md)
+
+Source: [`packages/collaboration/agent-team/src/types.ts:830`](../packages/collaboration/agent-team/src/types.ts)
+
+<a id="collaborationorchestrationcharter--log-only"></a>
+
+#### `collaboration/orchestration/charter` — log-only
+
+```ts persistence-catalog
+/** Records the Lead-readable collaboration rules and budgets committed before formation. */
+'collaboration/orchestration/charter': TeamCharterEventData
+```
+
+Source: [`packages/collaboration/team-orchestrator/src/types.ts:252`](../packages/collaboration/team-orchestrator/src/types.ts)
+
+<a id="collaborationorchestrationplan--log-only"></a>
+
+#### `collaboration/orchestration/plan` — log-only
+
+```ts persistence-catalog
+/** Records the exact immutable blueprint roster and task DAG selected before formation. */
+'collaboration/orchestration/plan': TeamPlanEventData
+```
+
+Source: [`packages/collaboration/team-orchestrator/src/types.ts:250`](../packages/collaboration/team-orchestrator/src/types.ts)
+
+<a id="collaborationorchestrationprofile--log-only"></a>
+
+#### `collaboration/orchestration/profile` — log-only
+
+```ts persistence-catalog
+/** Records the automatic task profile and normalized planning input in the owning Lead Session. */
+'collaboration/orchestration/profile': TeamProfileEventData
+```
+
+Source: [`packages/collaboration/team-orchestrator/src/types.ts:248`](../packages/collaboration/team-orchestrator/src/types.ts)
+
+<a id="collaborationprotocol--log-only"></a>
+
+#### `collaboration/protocol` — log-only
+
+```ts persistence-catalog
+/** Commits the exact runtime-enforced Team Charter protocol before activation. */
+'collaboration/protocol': TeamRunProtocolEventData
+```
+
+Source: [`packages/collaboration/agent-team/src/types.ts:832`](../packages/collaboration/agent-team/src/types.ts)
+
+<a id="collaborationquality-gate--log-only"></a>
+
+#### `collaboration/quality-gate` — log-only
+
+```ts persistence-catalog
+/** Commits one materialized quality gate or formal result. */
+'collaboration/quality-gate': TeamRunQualityGateEventData
+```
+
+Source: [`packages/collaboration/agent-team/src/types.ts:838`](../packages/collaboration/agent-team/src/types.ts)
+
+<a id="collaborationruncreated--log-only"></a>
+
+#### `collaboration/run/created` — log-only
+
+```ts persistence-catalog
+/**
+ * Establishes one explicit TeamRun and its authoritative Lead before expert work;
+ * required-on-read because every later collaboration record depends on this policy snapshot.
+ */
+'collaboration/run/created': TeamRunCreatedEventData
+```
+
+Types: [TeamRunCreatedEventData](subsystems/agent-team.md)
+
+Source: [`packages/collaboration/agent-team/src/types.ts:811`](../packages/collaboration/agent-team/src/types.ts)
+
+<a id="collaborationrunphase--log-only"></a>
+
+#### `collaboration/run/phase` — log-only
+
+```ts persistence-catalog
+/**
+ * Commits one exact TeamRun lifecycle transition and optional terminal cause;
+ * required-on-read because it controls command admission and completion.
+ */
+'collaboration/run/phase': TeamRunPhaseEventData
+```
+
+Types: [TeamRunPhaseEventData](subsystems/agent-team.md)
+
+Source: [`packages/collaboration/agent-team/src/types.ts:816`](../packages/collaboration/agent-team/src/types.ts)
+
+<a id="collaborationtask--log-only"></a>
+
+#### `collaboration/task` — log-only
+
+```ts persistence-catalog
+/**
+ * Commits one complete compare-and-set task value; required-on-read because task revisions and the dependency DAG derive from it.
+ */
+'collaboration/task': TeamRunTaskEventData
+```
+
+Types: [TeamRunTaskEventData](subsystems/agent-team.md)
+
+Source: [`packages/collaboration/agent-team/src/types.ts:825`](../packages/collaboration/agent-team/src/types.ts)
+
 ### `command/*`
 
 <a id="commanddone--log-only"></a>

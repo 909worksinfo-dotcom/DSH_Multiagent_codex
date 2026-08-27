@@ -52,7 +52,7 @@ interface EventRelation {
 export interface PackageSource {
   /** Repository-relative path. */
   rel: string
-  /** Package short name from the `packages/<group>/<pkg>/src` path. */
+  /** Unique package short name from its npm manifest. */
   pkg: string
   /** The bound program source file. */
   sourceFile: ts.SourceFile
@@ -67,6 +67,7 @@ const GROUP_ORDER = [
   'core',
   'typert',
   'goal',
+  'collaboration',
   'experimental',
   'process',
   'bash',
@@ -480,11 +481,42 @@ const SERVICE_ROLES: ServiceRole[] = [
   },
   {
     key: 'agentTeams',
+    pkg: 'experimental-agent-team',
+    title: 'Experimental Agent Teams coordination domain',
+    mode: 'core',
+    consumers: ['experimental-tool-agent-team'],
+    note: 'Owns the historical implicit-root roster, durable peer mailbox, shared task DAG, and continuable-child lifecycle for the explicit example during migration.',
+  },
+  {
+    key: 'teamRuns',
     pkg: 'agent-team',
-    title: 'Agent Teams coordination domain',
+    title: 'Stable TeamRun collaboration domain',
     mode: 'core',
     consumers: ['tool-agent-team'],
-    note: 'Owns the implicit-root roster, durable peer mailbox, shared task DAG, and continuable-child lifecycle; tool-agent-team contributes the scoped model policy and controls.',
+    note: 'Owns Lead-log TeamRun replay, exact formation state, expert-attempt capacity, public collaboration, and the generic task DAG; tool-agent-team contributes scoped model commands without storing another state copy.',
+  },
+  {
+    key: 'expertCatalog',
+    pkg: 'expert-catalog',
+    title: 'Immutable expert capability catalog',
+    mode: 'core',
+    consumers: ['expert-runtime'],
+    note: 'Resolves one exact ExpertBlueprint revision into verified preset, skill, plugin, model, tool, and execution bindings with a canonical digest.',
+  },
+  {
+    key: 'expertRuntime',
+    pkg: 'expert-runtime',
+    title: 'Bound expert child runtime',
+    mode: 'core',
+    note: 'Commits a Lead-side capability binding, creates or recovers the matching continuable child, and settles the owning P1 provisioning attempt without duplicate prompt admission.',
+  },
+  {
+    key: 'teamOrchestrator',
+    pkg: 'team-orchestrator',
+    title: 'Automatic team formation orchestrator',
+    mode: 'core',
+    consumers: ['apiproxy'],
+    note: 'Profiles each admitted task, commits an exact immutable roster and Team Charter, and drives fail-closed expert provisioning to full planned strength.',
   },
   {
     key: 'jobs',
@@ -1169,10 +1201,17 @@ function unionSets<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): Set<T> {
  * @returns `packages/<group>/<pkg>/src` files tagged with their package name.
  */
 export function collectPackageSources(project: TypeScriptProject): PackageSource[] {
+  const owners = new Map(
+    collectPackageGraph(root, GROUP_ORDER, 'gen-doc-graphs')
+      .map(pkg => [pkg.rel, pkg.short] as const),
+  )
   return project.sourceFiles().flatMap((sourceFile): PackageSource[] => {
     const rel = project.relativePath(sourceFile)
-    const match = /^packages\/[^/]+\/([^/]+)\/src\/.+\.ts$/.exec(rel)
-    return match?.[1] ? [{ rel, pkg: match[1], sourceFile }] : []
+    const match = /^(packages\/[^/]+\/[^/]+)\/src\/.+\.ts$/.exec(rel)
+    const packageDir = match?.[1]
+    if (packageDir === undefined) return []
+    const pkg = owners.get(packageDir) ?? packageDir.slice(packageDir.lastIndexOf('/') + 1)
+    return [{ rel, pkg, sourceFile }]
   }).sort((left, right) => left.rel.localeCompare(right.rel))
 }
 

@@ -100,6 +100,532 @@
     - id: plugin-inventory
       name: '@deepseek-ai/dsh-host-plugin-inventory'
 
+    # Natural collaboration runtime. Every product task is admitted through
+    # the TeamOrchestrator and receives a Lead plus three through eight experts.
+    - id: agent-team
+      name: '@deepseek-ai/dsh-agent-team'
+      config:
+        maxActiveExperts: 8
+        maxProvisionAttempts: 12
+        maxTasks: 128
+        maxPublicMessages: 1024
+        maxPublicMessageBytes: 16384
+
+    - id: expert-catalog
+      name: '@deepseek-ai/dsh-expert-catalog'
+      config:
+        blueprints:
+          # Research-analysis pool
+          -
+            ref: { id: research-evidence-analyst, revision: 1 }
+            role: Evidence Researcher
+            objective: competitive_research source_retrieval literature_research policy_research with verifiable primary evidence
+            preset: standard
+            skills: [collaboration-research-analysis, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-web']
+            tools:
+              allow: [skill, web_search]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, evidence-led research specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete research task and decision context', required: true }
+            outputs:
+              - { name: evidenceBrief, description: 'Auditable findings, sources, uncertainty, and handoff', required: true }
+            acceptanceCriteria: [Claims are traceable to evidence, Uncertainty and contradictions are explicit]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: research-market-analyst, revision: 1 }
+            role: Market Analyst
+            objective: market_research commercial_analysis channel_analysis and market sizing evidence
+            preset: standard
+            skills: [collaboration-research-analysis, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-web']
+            tools:
+              allow: [skill, web_search]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, evidence-led research specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete research task and decision context', required: true }
+            outputs:
+              - { name: evidenceBrief, description: 'Auditable findings, sources, uncertainty, and handoff', required: true }
+            acceptanceCriteria: [Claims are traceable to evidence, Uncertainty and contradictions are explicit]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: research-competitive-analyst, revision: 1 }
+            role: Competitive Intelligence Analyst
+            objective: competitive_research product_analysis positioning and comparable-product evidence
+            preset: standard
+            skills: [collaboration-research-analysis, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-web']
+            tools:
+              allow: [skill, web_search]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, evidence-led research specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete research task and decision context', required: true }
+            outputs:
+              - { name: evidenceBrief, description: 'Auditable findings, sources, uncertainty, and handoff', required: true }
+            acceptanceCriteria: [Claims are traceable to evidence, Uncertainty and contradictions are explicit]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: research-policy-analyst, revision: 1 }
+            role: Policy and Regulatory Analyst
+            objective: policy_research regulatory_research compliance_review and jurisdictional evidence
+            preset: standard
+            skills: [collaboration-research-analysis, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-web']
+            tools:
+              allow: [skill, web_search]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, evidence-led research specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete research task and decision context', required: true }
+            outputs:
+              - { name: evidenceBrief, description: 'Auditable findings, sources, uncertainty, and handoff', required: true }
+            acceptanceCriteria: [Claims are traceable to evidence, Uncertainty and contradictions are explicit]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: research-data-analyst, revision: 1 }
+            role: Data Analyst
+            objective: data_analysis quantitative validation sampling bias and metric interpretation
+            preset: standard
+            skills: [collaboration-research-analysis, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-web']
+            tools:
+              allow: [skill, web_search]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, evidence-led research specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete research task and decision context', required: true }
+            outputs:
+              - { name: evidenceBrief, description: 'Auditable findings, sources, uncertainty, and handoff', required: true }
+            acceptanceCriteria: [Claims are traceable to evidence, Uncertainty and contradictions are explicit]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: research-technical-analyst, revision: 1 }
+            role: Technical Analyst
+            objective: technical_analysis engineering_analysis scientific_research and feasibility evidence
+            preset: standard
+            skills: [collaboration-research-analysis, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-web']
+            tools:
+              allow: [skill, web_search]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, evidence-led research specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete research task and decision context', required: true }
+            outputs:
+              - { name: evidenceBrief, description: 'Auditable findings, sources, uncertainty, and handoff', required: true }
+            acceptanceCriteria: [Claims are traceable to evidence, Uncertainty and contradictions are explicit]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: research-risk-reviewer, revision: 1 }
+            role: Research Risk Reviewer
+            objective: risk_review root_cause_review ip_research supply_chain_analysis and adversarial evidence review
+            preset: standard
+            skills: [collaboration-research-analysis, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-web']
+            tools:
+              allow: [skill, web_search]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, evidence-led research specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete research task and decision context', required: true }
+            outputs:
+              - { name: evidenceBrief, description: 'Auditable findings, sources, uncertainty, and handoff', required: true }
+            acceptanceCriteria: [Claims are traceable to evidence, Uncertainty and contradictions are explicit]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: research-synthesis-reviewer, revision: 1 }
+            role: Synthesis Reviewer
+            objective: synthesis localization_analysis evidence_review and cross-source consistency review
+            preset: standard
+            skills: [collaboration-research-analysis, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-web']
+            tools:
+              allow: [skill, web_search]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, evidence-led research specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete research task and decision context', required: true }
+            outputs:
+              - { name: evidenceBrief, description: 'Auditable findings, sources, uncertainty, and handoff', required: true }
+            acceptanceCriteria: [Claims are traceable to evidence, Uncertainty and contradictions are explicit]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+
+          # Product-solution pool
+          -
+            ref: { id: product-solution-analyst, revision: 1 }
+            role: Product Solution Analyst
+            objective: product_analysis product_strategy agent_product_design and acceptance-ready product behavior
+            preset: standard
+            skills: [collaboration-product-solution, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-todo']
+            tools:
+              allow: [skill, todo_write]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, user-centered product specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete product problem and decision context', required: true }
+            outputs:
+              - { name: productBrief, description: 'User flow, states, tradeoffs, risks, and acceptance checks', required: true }
+            acceptanceCriteria: [Every proposal maps to a user problem, Failure and acceptance states are testable]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: product-user-researcher, revision: 1 }
+            role: User Researcher
+            objective: user_research ux_review personas jobs-to-be-done and evidence-backed user needs
+            preset: standard
+            skills: [collaboration-product-solution, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-todo']
+            tools:
+              allow: [skill, todo_write]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, user-centered product specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete product problem and decision context', required: true }
+            outputs:
+              - { name: productBrief, description: 'User flow, states, tradeoffs, risks, and acceptance checks', required: true }
+            acceptanceCriteria: [Every proposal maps to a user problem, Failure and acceptance states are testable]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: product-strategist, revision: 1 }
+            role: Product Strategist
+            objective: product_strategy competitive_research market_requirements prioritization and scope
+            preset: standard
+            skills: [collaboration-product-solution, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-todo']
+            tools:
+              allow: [skill, todo_write]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, user-centered product specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete product problem and decision context', required: true }
+            outputs:
+              - { name: productBrief, description: 'User flow, states, tradeoffs, risks, and acceptance checks', required: true }
+            acceptanceCriteria: [Every proposal maps to a user problem, Failure and acceptance states are testable]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: product-interaction-designer, revision: 1 }
+            role: Interaction Designer
+            objective: interaction_design ux_design web_product_design desktop_product_design mobile_product_design
+            preset: standard
+            skills: [collaboration-product-solution, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-todo']
+            tools:
+              allow: [skill, todo_write]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, user-centered product specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete product problem and decision context', required: true }
+            outputs:
+              - { name: productBrief, description: 'User flow, states, tradeoffs, risks, and acceptance checks', required: true }
+            acceptanceCriteria: [Every proposal maps to a user problem, Failure and acceptance states are testable]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: product-workflow-architect, revision: 1 }
+            role: Workflow Architect
+            objective: workflow_design information_architecture enterprise_product_design operations_design
+            preset: standard
+            skills: [collaboration-product-solution, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-todo']
+            tools:
+              allow: [skill, todo_write]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, user-centered product specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete product problem and decision context', required: true }
+            outputs:
+              - { name: productBrief, description: 'User flow, states, tradeoffs, risks, and acceptance checks', required: true }
+            acceptanceCriteria: [Every proposal maps to a user problem, Failure and acceptance states are testable]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: product-metrics-designer, revision: 1 }
+            role: Metrics Designer
+            objective: metric_design success_metrics instrumentation experiment_design and decision thresholds
+            preset: standard
+            skills: [collaboration-product-solution, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-todo']
+            tools:
+              allow: [skill, todo_write]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, user-centered product specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete product problem and decision context', required: true }
+            outputs:
+              - { name: productBrief, description: 'User flow, states, tradeoffs, risks, and acceptance checks', required: true }
+            acceptanceCriteria: [Every proposal maps to a user problem, Failure and acceptance states are testable]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: product-feasibility-reviewer, revision: 1 }
+            role: Technical Feasibility Reviewer
+            objective: technical_feasibility technical_architecture enterprise_architecture dependency and delivery review
+            preset: standard
+            skills: [collaboration-product-solution, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-todo']
+            tools:
+              allow: [skill, todo_write]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, user-centered product specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete product problem and decision context', required: true }
+            outputs:
+              - { name: productBrief, description: 'User flow, states, tradeoffs, risks, and acceptance checks', required: true }
+            acceptanceCriteria: [Every proposal maps to a user problem, Failure and acceptance states are testable]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+          -
+            ref: { id: product-acceptance-reviewer, revision: 1 }
+            role: Risk and Acceptance Reviewer
+            objective: security_review compliance_review acceptance_design governance_model and launch_plan review
+            preset: standard
+            skills: [collaboration-product-solution, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-todo']
+            tools:
+              allow: [skill, todo_write]
+            model: { maxTokens: 4096 }
+            persona: Work as a public, user-centered product specialist inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete product problem and decision context', required: true }
+            outputs:
+              - { name: productBrief, description: 'User flow, states, tradeoffs, risks, and acceptance checks', required: true }
+            acceptanceCriteria: [Every proposal maps to a user problem, Failure and acceptance states are testable]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 8, maxTokens: 4096, timeoutMs: 600000 }
+
+          # Software-development pool. The first role is the default writer;
+          # all remaining roles receive read-only code discovery tools.
+          -
+            ref: { id: software-implementation-engineer, revision: 1 }
+            role: Implementation Engineer
+            objective: backend_development frontend_development implementation and one-writer delivery ownership
+            preset: standard
+            skills: [collaboration-software-development, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-fs', '@deepseek-ai/dsh-tool-fs-search']
+            tools:
+              allow: [skill, bash, read, write, edit, glob, grep]
+            model: { maxTokens: 4096 }
+            persona: Work as the scoped implementation writer inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete engineering task and repository context', required: true }
+            outputs:
+              - { name: engineeringHandoff, description: 'Contract, implementation, verification, risks, and handoff', required: true }
+            acceptanceCriteria: [The requested behavior is verified, Failure and boundary behavior are covered]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 10, maxTokens: 4096, timeoutMs: 900000 }
+          -
+            ref: { id: software-test-engineer, revision: 1 }
+            role: Test Engineer
+            objective: test_engineering e2e_testing boundary_testing failure_rehearsal and regression review
+            preset: standard
+            skills: [collaboration-software-development, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-fs-search']
+            tools:
+              allow: [skill, read, glob, grep]
+            model: { maxTokens: 4096 }
+            persona: Work as a read-only engineering reviewer inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete engineering task and repository context', required: true }
+            outputs:
+              - { name: engineeringHandoff, description: 'Contract, implementation, verification, risks, and handoff', required: true }
+            acceptanceCriteria: [The requested behavior is verified, Failure and boundary behavior are covered]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 10, maxTokens: 4096, timeoutMs: 900000 }
+          -
+            ref: { id: software-system-architect, revision: 1 }
+            role: System Architect
+            objective: system_architecture api_design state_machine persistence and dependency-boundary review
+            preset: standard
+            skills: [collaboration-software-development, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-fs-search']
+            tools:
+              allow: [skill, read, glob, grep]
+            model: { maxTokens: 4096 }
+            persona: Work as a read-only engineering reviewer inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete engineering task and repository context', required: true }
+            outputs:
+              - { name: engineeringHandoff, description: 'Contract, implementation, verification, risks, and handoff', required: true }
+            acceptanceCriteria: [The requested behavior is verified, Failure and boundary behavior are covered]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 10, maxTokens: 4096, timeoutMs: 900000 }
+          -
+            ref: { id: software-security-reviewer, revision: 1 }
+            role: Security Reviewer
+            objective: security_review threat_model permission privacy and untrusted-input review
+            preset: standard
+            skills: [collaboration-software-development, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-fs-search']
+            tools:
+              allow: [skill, read, glob, grep]
+            model: { maxTokens: 4096 }
+            persona: Work as a read-only engineering reviewer inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete engineering task and repository context', required: true }
+            outputs:
+              - { name: engineeringHandoff, description: 'Contract, implementation, verification, risks, and handoff', required: true }
+            acceptanceCriteria: [The requested behavior is verified, Failure and boundary behavior are covered]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 10, maxTokens: 4096, timeoutMs: 900000 }
+          -
+            ref: { id: software-performance-reviewer, revision: 1 }
+            role: Performance Engineer
+            objective: performance_review scalability concurrency resource_budget and latency review
+            preset: standard
+            skills: [collaboration-software-development, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-fs-search']
+            tools:
+              allow: [skill, read, glob, grep]
+            model: { maxTokens: 4096 }
+            persona: Work as a read-only engineering reviewer inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete engineering task and repository context', required: true }
+            outputs:
+              - { name: engineeringHandoff, description: 'Contract, implementation, verification, risks, and handoff', required: true }
+            acceptanceCriteria: [The requested behavior is verified, Failure and boundary behavior are covered]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 10, maxTokens: 4096, timeoutMs: 900000 }
+          -
+            ref: { id: software-reliability-reviewer, revision: 1 }
+            role: Reliability Engineer
+            objective: reliability restart_recovery cancellation idempotency and operational failure review
+            preset: standard
+            skills: [collaboration-software-development, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-fs-search']
+            tools:
+              allow: [skill, read, glob, grep]
+            model: { maxTokens: 4096 }
+            persona: Work as a read-only engineering reviewer inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete engineering task and repository context', required: true }
+            outputs:
+              - { name: engineeringHandoff, description: 'Contract, implementation, verification, risks, and handoff', required: true }
+            acceptanceCriteria: [The requested behavior is verified, Failure and boundary behavior are covered]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 10, maxTokens: 4096, timeoutMs: 900000 }
+          -
+            ref: { id: software-frontend-reviewer, revision: 1 }
+            role: Frontend and Accessibility Reviewer
+            objective: frontend_review accessibility responsive_layout interaction_state and browser_e2e review
+            preset: standard
+            skills: [collaboration-software-development, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-fs-search']
+            tools:
+              allow: [skill, read, glob, grep]
+            model: { maxTokens: 4096 }
+            persona: Work as a read-only engineering reviewer inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete engineering task and repository context', required: true }
+            outputs:
+              - { name: engineeringHandoff, description: 'Contract, implementation, verification, risks, and handoff', required: true }
+            acceptanceCriteria: [The requested behavior is verified, Failure and boundary behavior are covered]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 10, maxTokens: 4096, timeoutMs: 900000 }
+          -
+            ref: { id: software-code-reviewer, revision: 1 }
+            role: Code Quality Reviewer
+            objective: code_review maintainability type_safety invariant logic and test-completeness review
+            preset: standard
+            skills: [collaboration-software-development, collaboration-peer-review]
+            plugins: ['@deepseek-ai/dsh-tool-fs-search']
+            tools:
+              allow: [skill, read, glob, grep]
+            model: { maxTokens: 4096 }
+            persona: Work as a read-only engineering reviewer inside the Lead-owned TeamRun
+            inputs:
+              - { name: taskContext, description: 'Complete engineering task and repository context', required: true }
+            outputs:
+              - { name: engineeringHandoff, description: 'Contract, implementation, verification, risks, and handoff', required: true }
+            acceptanceCriteria: [The requested behavior is verified, Failure and boundary behavior are covered]
+            collaboration: { challenge: true, review: true, requestHelp: true }
+            budget: { maxTurns: 10, maxTokens: 4096, timeoutMs: 900000 }
+
+    - id: expert-runtime
+      name: '@deepseek-ai/dsh-expert-runtime'
+      config:
+        subagentProvider: spawn
+        maxInitialPromptBytes: 65536
+
+    - id: skill-marketplace
+      name: '@deepseek-ai/dsh-skill-marketplace'
+      config:
+        timeoutMs: 7000
+        maxResultsPerProvider: 4
+        smitheryEndpoint: https://registry.smithery.ai/
+        smitheryApiKey: !!js process.env.SMITHERY_API_KEY
+        smitheryConnectEndpoint: https://api.smithery.ai/
+        smitheryNamespace: 909works-info
+        skillsShEndpoint: https://skills.sh/
+        composioEndpoint: https://backend.composio.dev/api/v3/
+        composioApiKey: !!js process.env.COMPOSIO_API_KEY
+        trustedSkillsShSources:
+          - anthropics/skills
+          - mattpocock/skills
+          - vercel-labs/agent-skills
+          - vercel-labs/skills
+
+    - id: team-orchestrator
+      name: '@deepseek-ai/dsh-team-orchestrator'
+      config:
+        pools:
+          - domain: research_analysis
+            blueprints:
+              - { id: research-evidence-analyst, revision: 1 }
+              - { id: research-market-analyst, revision: 1 }
+              - { id: research-competitive-analyst, revision: 1 }
+              - { id: research-policy-analyst, revision: 1 }
+              - { id: research-data-analyst, revision: 1 }
+              - { id: research-technical-analyst, revision: 1 }
+              - { id: research-risk-reviewer, revision: 1 }
+              - { id: research-synthesis-reviewer, revision: 1 }
+          - domain: product_solution
+            blueprints:
+              - { id: product-solution-analyst, revision: 1 }
+              - { id: product-user-researcher, revision: 1 }
+              - { id: product-strategist, revision: 1 }
+              - { id: product-interaction-designer, revision: 1 }
+              - { id: product-workflow-architect, revision: 1 }
+              - { id: product-metrics-designer, revision: 1 }
+              - { id: product-feasibility-reviewer, revision: 1 }
+              - { id: product-acceptance-reviewer, revision: 1 }
+          - domain: software_development
+            blueprints:
+              - { id: software-implementation-engineer, revision: 1 }
+              - { id: software-test-engineer, revision: 1 }
+              - { id: software-system-architect, revision: 1 }
+              - { id: software-security-reviewer, revision: 1 }
+              - { id: software-performance-reviewer, revision: 1 }
+              - { id: software-reliability-reviewer, revision: 1 }
+              - { id: software-frontend-reviewer, revision: 1 }
+              - { id: software-code-reviewer, revision: 1 }
+        maxTextBytes: 16384
+        maxWorkstreams: 32
+        maxListItems: 64
+        maxContextEntries: 32
+        maxEventBytes: 524288
+        maxMarketplaceSkillsPerExpert: 3
+        communication:
+          simple: { maxChallengeRounds: 1, maxMessagesPerExpert: 8 }
+          medium: { maxChallengeRounds: 2, maxMessagesPerExpert: 12 }
+          complex: { maxChallengeRounds: 3, maxMessagesPerExpert: 16 }
+
+    - id: tool-agent-team
+      name: '@deepseek-ai/dsh-tool-agent-team'
+
     # The API gateway: the transport-agnostic dispatch face every client shape
     # shares. The base layer's agent-default-model service owns the default model.
     - id: api-gateway
@@ -215,6 +741,10 @@
 
     - id: ui-attachment
       name: '@deepseek-ai/dsh-client-ui-attachment'
+
+    # Dedicated coordinator-led multi-agent task playground.
+    - id: ui-collaboration
+      name: '@deepseek-ai/dsh-client-ui-collaboration'
 
     # Tool call tree, generic fallback, and keyed business Tool views.
     - id: ui-tool

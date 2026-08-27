@@ -1,0 +1,4 @@
+- id: expert-tool
+  name: ../../plugins/expert-tool.js
+  config:
+    tool: expert_only

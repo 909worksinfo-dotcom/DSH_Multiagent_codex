@@ -17,8 +17,13 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import AgentPresets from '@deepseek-ai/dsh-agent-presets'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { snapshotSubagentDescriptor } from '@deepseek-ai/dsh-subagent'
+import {
+  applyChildComposition,
+  childSessionMeta,
+  snapshotSubagentDescriptor,
+} from '@deepseek-ai/dsh-subagent'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import { startInProcessRun } from '../src/index.ts'
 
@@ -131,5 +136,28 @@ describe('a child agent composed in-process', () => {
     expect(ctx.tools.schemas(run.localAgent).map(schema => schema.name)).toEqual(['reviewing_only'])
     expect(run.localAgent?.session.header.agentPreset).toBe('reviewing')
     await run.dispose()
+  })
+
+  it('mounts an explicitly selected child preset instead of inheriting the parent', async () => {
+    const { ctx, adapter, parent } = await setupPresetHost()
+    const childId = SessionId('explicit-preset-child')
+    const handle = await ctx.agents.create({
+      sessionId: childId,
+      meta: childSessionMeta(parent, 1, 0, 'reviewing'),
+      agentOptions: { provider: 'mock', model: 'mock' },
+      setup: async (childCtx) => {
+        await applyChildComposition(childCtx, parent, { agentPreset: 'reviewing' })
+      },
+    })
+
+    handle.agent.followup(createUserMessage({
+      content: [{ type: 'text', text: 'review this' }],
+      source: { kind: 'user' },
+    }))
+    await handle.agent.whenIdle()
+
+    expect(adapter.requests.at(-1)?.tools?.map(tool => tool.name)).toEqual(['reviewing_only'])
+    expect(handle.agent.session.header.agentPreset).toBe('reviewing')
+    await handle.dispose()
   })
 })

@@ -392,9 +392,17 @@ export interface LegacyConversationSlice {
   readonly runningCalls: readonly RunningToolCall[]
 }
 
+/** One regular row or contiguous low-priority activity group in Chat render order. */
+export interface ChatFlowItem {
+  readonly key: string
+  readonly mode: 'activity' | 'regular'
+  readonly nodeKeys: readonly string[]
+}
+
 /** Incremental Chat publication with immutable order and stable live keyed readers. */
 export interface ChatSnapshot {
   readonly order: readonly string[]
+  readonly flow: readonly ChatFlowItem[]
   readonly nodes: ChatNodeStore
   readonly locations: ChatLocationNodeIndex
   readonly timeline: ConversationTimelineSnapshot
@@ -412,6 +420,7 @@ export const EMPTY_CONVERSATION_VIEWS: ConversationViewSnapshotStore = {
 /** Empty Chat target used before a view builder is registered. */
 export const EMPTY_CHAT_SNAPSHOT: ChatSnapshot = {
   order: EMPTY_LIST,
+  flow: EMPTY_LIST,
   nodes: {
     get: () => undefined,
     values: () => EMPTY_LIST,

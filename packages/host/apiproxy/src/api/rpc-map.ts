@@ -14,6 +14,7 @@ import type { SettingsApi } from './settings.ts'
 import type { CredentialsApi } from './credentials.ts'
 import type { LlmApi } from './llm.ts'
 import type { SubagentsApi } from './subagents.ts'
+import type { CollaborationApi } from './collaboration.ts'
 import type { RpcResponse } from './rpc.ts'
 
 /**
@@ -38,6 +39,15 @@ export interface RpcMethodMap {
   'subagent.history': SubagentsApi['history']
   'subagent.prompt': SubagentsApi['prompt']
   'subagent.interrupt': SubagentsApi['interrupt']
+  'collaboration.create': CollaborationApi['create']
+  'collaboration.list': CollaborationApi['list']
+  'collaboration.get': CollaborationApi['get']
+  'collaboration.readArtifact': CollaborationApi['readArtifact']
+  'collaboration.events': CollaborationApi['events']
+  'collaboration.send': CollaborationApi['send']
+  'collaboration.complete': CollaborationApi['complete']
+  'collaboration.retryFormation': CollaborationApi['retryFormation']
+  'collaboration.cancel': CollaborationApi['cancel']
   'host.describe': HostApi['describe']
   'host.pickDirectory': HostApi['pickDirectory']
   'host.listDirectory': HostApi['listDirectory']

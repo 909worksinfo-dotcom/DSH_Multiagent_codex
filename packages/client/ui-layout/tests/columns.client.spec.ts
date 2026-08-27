@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CENTER_MIN, clampWidth, computeColumns,
+  CENTER_MIN, clampWidth, computeColumns, computeFrameColumns,
+  COLLABORATION_CENTER_MIN, COLLABORATION_DEFAULT, COLLABORATION_MAX, COLLABORATION_MIN,
   DETAILS_DEFAULT, DETAILS_MIN, SIDEBAR_COLLAPSED, SIDEBAR_DEFAULT, SIDEBAR_MIN,
 } from '@deepseek-ai/dsh-client-ui-layout/src/client/columns.ts'
 
@@ -91,5 +92,56 @@ describe('computeColumns — degenerate viewports', () => {
     // Reaches step 3's auto-close with the compact rail sidebar.
     expect(computeColumns(500, closed(300), open(DETAILS_DEFAULT)))
       .toEqual({ sidebar: SIDEBAR_COLLAPSED, center: 500 - SIDEBAR_COLLAPSED, details: 0 })
+  })
+})
+
+describe('computeFrameColumns', () => {
+  it('allows the collaboration dock to expand to twice its default width', () => {
+    expect(COLLABORATION_MAX).toBe(COLLABORATION_DEFAULT * 2)
+    const viewport = SIDEBAR_DEFAULT + COLLABORATION_CENTER_MIN + COLLABORATION_MAX
+    expect(computeFrameColumns(viewport, SIDEBAR_DEFAULT, 0, 99_999)).toEqual({
+      sidebar: SIDEBAR_DEFAULT,
+      center: COLLABORATION_CENTER_MIN,
+      details: 0,
+      collaboration: COLLABORATION_MAX,
+    })
+  })
+
+  it('keeps the collaboration dock beside the conversation instead of overlaying it', () => {
+    expect(computeFrameColumns(1440, SIDEBAR_DEFAULT, DETAILS_DEFAULT, COLLABORATION_DEFAULT)).toEqual({
+      sidebar: SIDEBAR_DEFAULT,
+      center: 1440 - SIDEBAR_DEFAULT - COLLABORATION_DEFAULT,
+      details: 0,
+      collaboration: COLLABORATION_DEFAULT,
+    })
+  })
+
+  it('shrinks the dock before compromising the conversation floor', () => {
+    const viewport = SIDEBAR_DEFAULT + COLLABORATION_CENTER_MIN + COLLABORATION_DEFAULT - 40
+    expect(computeFrameColumns(viewport, SIDEBAR_DEFAULT, 0, COLLABORATION_DEFAULT)).toEqual({
+      sidebar: SIDEBAR_DEFAULT,
+      center: COLLABORATION_CENTER_MIN,
+      details: 0,
+      collaboration: COLLABORATION_DEFAULT - 40,
+    })
+  })
+
+  it('supports the compact 639px frame with both conversation and dock visible', () => {
+    expect(computeFrameColumns(639, 0, 0, COLLABORATION_DEFAULT)).toEqual({
+      sidebar: SIDEBAR_COLLAPSED,
+      center: COLLABORATION_CENTER_MIN,
+      details: 0,
+      collaboration: 639 - SIDEBAR_COLLAPSED - COLLABORATION_CENTER_MIN,
+    })
+  })
+
+  it('derives the dock closed when even its minimum cannot fit', () => {
+    const viewport = SIDEBAR_COLLAPSED + COLLABORATION_CENTER_MIN + COLLABORATION_MIN - 1
+    expect(computeFrameColumns(viewport, 0, 0, COLLABORATION_DEFAULT)).toEqual({
+      sidebar: SIDEBAR_COLLAPSED,
+      center: viewport - SIDEBAR_COLLAPSED,
+      details: 0,
+      collaboration: 0,
+    })
   })
 })

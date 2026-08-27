@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { ApiProxy, HostFrame, MuxFrame } from '../src/api/index.ts'
-import type { ClientResponse, RpcMessage, RpcReceipt, RpcRequest } from '../src/api/rpc.ts'
+import type { ClientResponse, RpcMessage, RpcReceipt, RpcRequest, RpcResponse } from '../src/api/rpc.ts'
 import { RpcId } from '../src/api/rpc.ts'
 import { toFetchHandler } from '../src/fetch/handler.ts'
 import { AbstractApiClient, InProcessApiClient } from '../src/fetch/client.ts'
@@ -15,6 +15,17 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       yield { rpcId: RpcId(`frame-${String(frames.indexOf(payload))}`), payload }
     }
   }
+  const collaborationError = <T>(request: RpcRequest<unknown>): Promise<RpcResponse<T>> => Promise.resolve({
+    rpcId: request.rpcId,
+    result: {
+      ok: false,
+      error: {
+        code: 'collaboration-error',
+        message: 'stub',
+        details: { collaborationCode: 'TEAM_NOT_FOUND', retryable: false },
+      },
+    },
+  })
   return {
     sessions: {
       async list(request) {
@@ -136,6 +147,17 @@ function fakeApi(overrides: Partial<{ muxFrames: MuxFrame[]; hostFrames: HostFra
       async interrupt(request) {
         return { rpcId: request.rpcId, result: { ok: true, value: { accepted: true as const } } }
       },
+    },
+    collaboration: {
+      create: collaborationError,
+      list: collaborationError,
+      get: collaborationError,
+      readArtifact: collaborationError,
+      events: collaborationError,
+      send: collaborationError,
+      complete: collaborationError,
+      retryFormation: collaborationError,
+      cancel: collaborationError,
     },
     host: {
       async describe(request) {

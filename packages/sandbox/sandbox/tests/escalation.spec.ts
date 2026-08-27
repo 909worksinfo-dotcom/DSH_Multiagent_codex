@@ -78,6 +78,8 @@ describe('approveEscalation', () => {
     const seen: { reason?: string }[] = []
     const granted = await approveEscalation(req(), ingredients({ approver: approver('allowed-once', r => seen.push(r as { reason?: string })) }))
     expect(granted).toBe('workspace-write')
+    await expect(approveEscalation(req(), ingredients({ approver: approver('allowed-for-turn') })))
+      .resolves.toBe('workspace-write')
     expect(seen[0]?.reason).toBe('escalate sandbox to workspace-write: the user asked to write in the workspace')
   })
 

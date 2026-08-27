@@ -117,9 +117,9 @@ export async function startInProcessRun(
   const inherited = captureDelegatedPolicyOverrides(parent)
 
   let structured: StructuredAttachment | undefined
-  const setup = (childCtx: Context): void => {
+  const setup = async (childCtx: Context): Promise<void> => {
     appendDelegatedPolicyOverrides((childCtx.agent as Agent).session, inherited)
-    applyChildComposition(childCtx, parent, {
+    await applyChildComposition(childCtx, parent, {
       persona: request.persona,
       toolFilter: request.toolFilter,
     })

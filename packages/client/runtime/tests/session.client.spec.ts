@@ -91,6 +91,7 @@ function testViewDefinition(): ConversationViewDefinition<ChatConversationViewNo
       const store = new TestNodeStore()
       let current: ChatSnapshot = {
         order: EMPTY,
+        flow: EMPTY,
         nodes: store,
         locations: TEST_LOCATIONS,
         timeline: { turnOrder: EMPTY, turns: new Map() },
@@ -100,6 +101,7 @@ function testViewDefinition(): ConversationViewDefinition<ChatConversationViewNo
         const nodes = [...store.values()].sort((left, right) => left.anchorSeq - right.anchorSeq)
         current = {
           order: nodes.map(node => node.key),
+          flow: nodes.map(node => ({ key: `regular:${node.key}`, mode: 'regular', nodeKeys: [node.key] })),
           nodes: store,
           locations: TEST_LOCATIONS,
           timeline,

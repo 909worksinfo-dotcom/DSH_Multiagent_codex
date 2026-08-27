@@ -35,6 +35,7 @@ import type {
   ApiProxy, ClientRequest, ClientResponse, HistoryEntry, HostFrame, MuxFrame, RpcReceipt,
   ModelProviderGroup, ModelSelection, RpcRequest, RpcResponse, RpcResult, ServerRequest, ServerResponse, SessionSummary,
   ToolCallView, ToolEventView, ToolResultView, WorkspaceId, WorkspaceView,
+  CollaborationPublicEventView, CollaborationRunView,
 } from './api.ts'
 import type { RequestPayload, ResponseValue, RpcMethodMap } from '@deepseek-ai/dsh-host-apiproxy/api'
 import { AbstractApiClient, RpcId, SESSION_SEARCH_RESULT_LIMIT } from './api.ts'
@@ -2263,6 +2264,252 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
     replays.set(id, { timer: setTimeout(tick, 80), finish })
   }
 
+  const collaborationRuns = new Map<SessionId, CollaborationRunView>()
+  const collaborationEvents = new Map<SessionId, CollaborationPublicEventView[]>()
+  const collaborationArtifactBodies = new Map<SessionId, Map<string, string>>()
+  const fixtureCollaborationRun = (
+    payload: Parameters<ApiProxy['collaboration']['create']>[0]['payload'],
+  ): CollaborationRunView => {
+    const domain = /开发|代码|frontend|backend|software|\bapi\b/iu.test(`${payload.title}\n${payload.objective}`)
+      ? 'software_development' as const
+      : /产品|需求|方案|product|\bprd\b/iu.test(`${payload.title}\n${payload.objective}`)
+        ? 'product_solution' as const
+        : 'research_analysis' as const
+    const skill = domain === 'software_development'
+      ? 'collaboration-software-development'
+      : domain === 'product_solution'
+        ? 'collaboration-product-solution'
+        : 'collaboration-research-analysis'
+    const plugin = domain === 'research_analysis'
+      ? '@deepseek-ai/dsh-tool-web'
+      : domain === 'product_solution'
+        ? '@deepseek-ai/dsh-tool-todo'
+        : '@deepseek-ai/dsh-tool-fs-search'
+    const createdAt = Date.now()
+    const expertActor = {
+      role: 'expert' as const,
+      memberId: 'fixture-expert-1',
+      sessionId: sid(`fixture-expert-${payload.leadSessionId}`),
+      name: 'expert-1',
+    }
+    const leadActor = { role: 'lead' as const, sessionId: payload.leadSessionId, name: 'lead' as const }
+    return {
+      id: payload.leadSessionId,
+      requestId: payload.requestId,
+      ...payload.retryOf === undefined ? {} : { retryOf: payload.retryOf },
+      title: payload.title,
+      objective: payload.objective,
+      language: payload.language,
+      createdAt,
+      cursor: 14,
+      status: 'running',
+      phase: 'active',
+      profile: {
+        domain,
+        objective: payload.objective,
+        successCriteria: [`Complete and review: ${payload.objective}`],
+        workstreams: [{
+          id: 'objective-part-1',
+          subject: 'Objective part 1',
+          description: payload.objective,
+          blockedBy: [],
+          requiredCapabilities: [],
+          resourceScopes: [],
+        }],
+        riskSignals: [],
+        complexity: 'simple',
+        plannedExperts: 1,
+        metrics: {
+          workstreamCount: 1,
+          dependencyCount: 0,
+          independentWorkstreams: 1,
+          longestDependencyPath: 1,
+          capabilityCount: 0,
+          riskSignalCount: 0,
+          decomposable: false,
+          toolDensity: 'low',
+          risk: 'low',
+        },
+      },
+      charter: {
+        objective: payload.objective,
+        successCriteria: [`Complete and review: ${payload.objective}`],
+        topology: 'producer_reviewer',
+        taskDag: [{
+          id: 'objective-part-1',
+          subject: 'Objective part 1',
+          description: payload.objective,
+          blockedBy: [],
+          requiredCapabilities: [],
+          resourceScopes: [],
+        }],
+        communication: { maxChallengeRounds: 1, maxMessagesPerExpert: 6 },
+        qualityChecks: [`Complete and review: ${payload.objective}`],
+        budgets: [{ slotId: 'slot-1', maxTurns: 8, maxTokens: 8_192, timeoutMs: 600_000 }],
+        termination: { success: 'all_tasks_completed_and_reviewed', formationFailure: 'fail_closed' },
+      },
+      lead: { sessionId: payload.leadSessionId, name: 'lead', role: 'Lead Agent' },
+      experts: [{
+        id: 'fixture-expert-1',
+        sessionId: sid(`fixture-expert-${payload.leadSessionId}`),
+        name: 'expert-1',
+        role: domain === 'software_development'
+          ? 'Implementation Engineer'
+          : domain === 'product_solution' ? 'Product Solution Analyst' : 'Evidence Researcher',
+        phase: 'active',
+        binding: {
+          blueprint: { id: `fixture-${domain}-expert`, revision: 1 },
+          preset: { id: 'standard', label: 'standard' },
+          skills: [{ id: skill, label: skill }],
+          marketplaceSkills: [],
+          plugins: [{ id: plugin, label: plugin }],
+        },
+      }],
+      tasks: [{
+        id: 'task-1',
+        revision: 2,
+        subject: payload.language === 'zh' ? '完成首轮专家产出' : 'Produce the first expert output',
+        description: payload.objective,
+        status: 'in_progress',
+        owner: expertActor,
+        blockedBy: [],
+        resourceScopes: [],
+        ready: true,
+        resourceConflicts: [],
+      }],
+      artifacts: [{
+        id: 'artifact-1',
+        version: 2,
+        kind: domain === 'software_development'
+          ? 'code'
+          : domain === 'product_solution' ? 'product_spec' : 'analysis',
+        title: payload.language === 'zh' ? '首轮专家产出' : 'First expert deliverable',
+        status: 'review',
+        author: expertActor,
+        taskIds: ['task-1'],
+        mediaType: 'text/markdown',
+        updatedAt: createdAt + 5,
+      }],
+      decisions: [{
+        id: 'decision-1',
+        version: 1,
+        subject: payload.language === 'zh' ? '补齐恢复验证' : 'Add recovery validation',
+        outcome: 'replan',
+        summary: payload.language === 'zh'
+          ? '保留核心方案，并把恢复验证加入交付门禁'
+          : 'Retain the core proposal and add recovery validation to delivery gates',
+        rationale: payload.language === 'zh'
+          ? '专家质疑暴露了异常输入和恢复路径缺口'
+          : 'Expert challenge exposed gaps in invalid-input and recovery paths',
+        taskIds: ['task-1'],
+        artifactIds: ['artifact-1'],
+        lead: leadActor,
+        createdAt: createdAt + 4,
+      }],
+      qualityGates: [{
+        id: 'quality-1',
+        version: 1,
+        name: payload.language === 'zh' ? '异常与恢复路径验收' : 'Invalid-input and recovery acceptance',
+        status: 'pending',
+        taskId: 'task-1',
+        artifactId: 'artifact-1',
+        summary: payload.language === 'zh' ? '等待 Lead 复核' : 'Awaiting Lead review',
+        updatedAt: createdAt + 5,
+      }],
+      controller: {
+        health: 'reworking',
+        lastProgressAt: createdAt + 5,
+        stalledTaskIds: [],
+        duplicateWorkCount: 0,
+        qualityFailureCount: 0,
+        recommendedActions: [],
+        actionsTaken: ['decision-1'],
+      },
+      protocol: {
+        mode: 'enforced',
+        topology: 'producer_reviewer',
+        limits: { maxChallengeRounds: 1, maxMessagesPerExpert: 6 },
+        members: [{
+          slotId: 'slot-1',
+          memberId: 'fixture-expert-1',
+          name: 'expert-1',
+          phase: 'active',
+          permissions: { challenge: true, review: true, requestHelp: true },
+          allowedTargets: ['lead'],
+          usedMessages: 3,
+          remainingMessages: 3,
+        }],
+        challenges: [{
+          challengeId: 'challenge-1',
+          threadId: 'main',
+          round: 1,
+          challenger: 'fixture-expert-1',
+          target: 'lead',
+          status: 'responded',
+          challengeMessageId: 'fixture-message-2',
+          responseMessageId: 'fixture-message-3',
+        }],
+      },
+      progress: {
+        total: 1,
+        ready: 0,
+        inProgress: 1,
+        completed: 0,
+        blocked: 0,
+        messageCount: 5,
+        artifactCount: 1,
+        decisionCount: 1,
+        qualityGatePending: 1,
+        qualityGatePassed: 0,
+        qualityGateFailed: 0,
+      },
+      expertCounts: { planned: 1, provisioning: 0, active: 1, failed: 0, attempts: 1, availableSlots: 7 },
+    }
+  }
+  const fixtureCollaborationTimeline = (run: CollaborationRunView): CollaborationPublicEventView[] => {
+    const expert = {
+      role: 'expert' as const,
+      memberId: 'fixture-expert-1',
+      sessionId: sid(`fixture-expert-${run.id}`),
+      name: 'expert-1',
+    }
+    const lead = { role: 'lead' as const, sessionId: run.id, name: 'lead' as const }
+    const content = run.language === 'zh'
+      ? [
+        '我建议先给出可验收的核心产出，再补充证据边界',
+        '这个方案是否遗漏了异常输入与恢复路径？',
+        '已补充异常输入、失败恢复和边界验证',
+        'Lead 裁决：保留核心方案，并把恢复验证列为交付门禁',
+        '已登记首轮交付资产，等待最终复核',
+      ]
+      : [
+        'I propose shipping the verifiable core output before expanding the evidence boundary.',
+        'Does this proposal miss invalid inputs and recovery paths?',
+        'Invalid-input, failure-recovery, and boundary checks are now included.',
+        'Lead decision: retain the core proposal and require recovery evidence for delivery.',
+        'The first delivery artifact is registered and ready for final review.',
+      ]
+    const kinds = ['proposal', 'challenge', 'response', 'decision', 'artifact'] as const
+    return kinds.map((kind, index) => ({
+      id: `fixture-message-${String(index + 1)}`,
+      eventId: `fixture-event-${String(index + 1)}`,
+      cursor: 10 + index,
+      threadId: 'main',
+      kind,
+      author: kind === 'decision' || kind === 'response' ? lead : expert,
+      targets: kind === 'challenge' ? [lead] : kind === 'response' ? [expert] : [],
+      references: {
+        taskId: 'task-1',
+        ...kind === 'challenge' || kind === 'response' ? { challengeId: 'challenge-1' } : {},
+        ...kind === 'decision' ? { decisionId: 'decision-1' } : {},
+        ...kind === 'artifact' ? { artifactId: 'artifact-1' } : {},
+      },
+      content: content[index] ?? '',
+      createdAt: run.createdAt + index + 1,
+      visibility: 'public',
+    }))
+  }
+
   const api: ApiProxy = {
     sessions: {
       list: request => ok(request, { items: [...sessions].sort((a, b) => b.updatedAt - a.updatedAt) }),
@@ -2614,6 +2861,183 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
         messageId: `fixture-message-${request.payload.childSessionId}` as never,
       })),
       interrupt: request => Promise.resolve(ok(request, { accepted: true as const })),
+    },
+    collaboration: {
+      create: (request) => {
+        const run = fixtureCollaborationRun(request.payload)
+        collaborationRuns.set(run.id, run)
+        collaborationEvents.set(run.id, fixtureCollaborationTimeline(run))
+        collaborationArtifactBodies.set(run.id, new Map([[
+          'artifact-1',
+          run.language === 'zh'
+            ? `# ${run.title}\n\n已完成首轮专家产出，并补充异常输入、失败恢复和边界验证\n`
+            : `# ${run.title}\n\nThe first expert deliverable now covers invalid inputs, failure recovery, and boundary validation\n`,
+        ]]))
+        return ok(request, run)
+      },
+      list: request => ok(request, {
+        runs: [...collaborationRuns.values()].sort((left, right) => right.createdAt - left.createdAt),
+      }),
+      get: (request) => {
+        const run = collaborationRuns.get(request.payload.runId)
+        return run === undefined
+          ? err(request, {
+            code: 'collaboration-error',
+            message: 'fixture collaboration run not found',
+            details: { collaborationCode: 'TEAM_NOT_FOUND', retryable: false, runId: request.payload.runId },
+          })
+          : ok(request, run)
+      },
+      readArtifact: (request) => {
+        const run = collaborationRuns.get(request.payload.runId)
+        const artifact = run?.artifacts.find(value => value.id === request.payload.artifactId)
+        const body = collaborationArtifactBodies.get(request.payload.runId)?.get(request.payload.artifactId)
+        return run === undefined || artifact === undefined || body === undefined
+          ? err(request, {
+            code: 'collaboration-error',
+            message: 'fixture collaboration artifact not found',
+            details: {
+              collaborationCode: 'TEAM_ARTIFACT_NOT_FOUND',
+              retryable: false,
+              runId: request.payload.runId,
+            },
+          })
+          : ok(request, { ...artifact, body })
+      },
+      events: (request) => {
+        const run = collaborationRuns.get(request.payload.runId)
+        if (run === undefined) {
+          return err(request, {
+            code: 'collaboration-error',
+            message: 'fixture collaboration run not found',
+            details: { collaborationCode: 'TEAM_NOT_FOUND', retryable: false, runId: request.payload.runId },
+          })
+        }
+        const afterCursor = request.payload.afterCursor ?? -1
+        const limit = request.payload.limit ?? 50
+        const remaining = (collaborationEvents.get(run.id) ?? []).filter(event => event.cursor > afterCursor)
+        const events = remaining.slice(0, limit)
+        const hasMore = remaining.length > events.length
+        return ok(request, {
+          events,
+          hasMore,
+          nextCursor: hasMore ? events.at(-1)?.cursor ?? afterCursor : run.cursor,
+        })
+      },
+      send: (request) => {
+        const run = collaborationRuns.get(request.payload.runId)
+        if (run === undefined) {
+          return err(request, {
+            code: 'collaboration-error',
+            message: 'fixture collaboration run not found',
+            details: { collaborationCode: 'TEAM_NOT_FOUND', retryable: false, runId: request.payload.runId },
+          })
+        }
+        const cursor = run.cursor + 1
+        const event: CollaborationPublicEventView = {
+          id: `fixture-message-${String(cursor)}`,
+          eventId: `fixture-event-${String(cursor)}`,
+          cursor,
+          threadId: request.payload.threadId,
+          kind: request.payload.kind,
+          author: { role: 'lead', sessionId: run.id, name: 'lead' },
+          targets: [],
+          references: { ...request.payload.references },
+          content: request.payload.content,
+          createdAt: Date.now(),
+          visibility: 'public',
+        }
+        collaborationEvents.set(run.id, [...collaborationEvents.get(run.id) ?? [], event])
+        collaborationRuns.set(run.id, {
+          ...run,
+          cursor,
+          progress: { ...run.progress, messageCount: run.progress.messageCount + 1 },
+        })
+        return ok(request, event)
+      },
+      retryFormation: (request) => {
+        const run = collaborationRuns.get(request.payload.runId)
+        return run === undefined
+          ? err(request, {
+            code: 'collaboration-error',
+            message: 'fixture collaboration run not found',
+            details: { collaborationCode: 'TEAM_NOT_FOUND', retryable: false, runId: request.payload.runId },
+          })
+          : ok(request, run)
+      },
+      cancel: (request) => {
+        const run = collaborationRuns.get(request.payload.runId)
+        if (run === undefined) {
+          return err(request, {
+            code: 'collaboration-error',
+            message: 'fixture collaboration run not found',
+            details: { collaborationCode: 'TEAM_NOT_FOUND', retryable: false, runId: request.payload.runId },
+          })
+        }
+        const cancelled: CollaborationRunView = {
+          ...run,
+          status: 'cancelled',
+          phase: 'cancelled',
+          failure: { code: 'TEAM_CANCELLED', message: 'Team formation was cancelled.', retryable: false, details: {} },
+        }
+        collaborationRuns.set(cancelled.id, cancelled)
+        return ok(request, cancelled)
+      },
+      complete: (request) => {
+        const run = collaborationRuns.get(request.payload.runId)
+        if (run === undefined) {
+          return err(request, {
+            code: 'collaboration-error',
+            message: 'fixture collaboration run not found',
+            details: { collaborationCode: 'TEAM_NOT_FOUND', retryable: false, runId: request.payload.runId },
+          })
+        }
+        if (run.tasks.length === 0 || run.tasks.some(task => task.status !== 'completed')) {
+          return err(request, {
+            code: 'collaboration-error',
+            message: 'every TeamRun task must be completed before final delivery',
+            details: { collaborationCode: 'DELIVERY_FAILED', retryable: false, runId: run.id },
+          })
+        }
+        const cursor = run.cursor + 1
+        const delivery: CollaborationPublicEventView = {
+          id: `fixture-message-${String(cursor)}`,
+          eventId: `fixture-event-${String(cursor)}`,
+          cursor,
+          threadId: request.payload.threadId,
+          kind: 'final_delivery',
+          author: { role: 'lead', sessionId: run.id, name: 'lead' },
+          targets: [],
+          references: { ...request.payload.references },
+          content: request.payload.content,
+          createdAt: Date.now(),
+          visibility: 'public',
+        }
+        const completed: CollaborationRunView = {
+          ...run,
+          cursor,
+          status: 'completed',
+          phase: 'completed',
+          tasks: run.tasks.map(task => ({
+            ...task,
+            revision: task.revision + 1,
+            status: 'completed',
+            ready: false,
+          })),
+          progress: {
+            ...run.progress,
+            total: run.progress.total,
+            ready: 0,
+            inProgress: 0,
+            completed: run.progress.total,
+            blocked: 0,
+            messageCount: run.progress.messageCount + 1,
+          },
+        }
+        collaborationEvents.set(run.id, [...collaborationEvents.get(run.id) ?? [], delivery])
+        collaborationRuns.set(run.id, completed)
+        return ok(request, completed)
+      },
     },
     host: {
       describe: request => ok(request, {
@@ -3191,6 +3615,15 @@ export class FixtureApiClient extends AbstractApiClient {
       case 'subagent.history': return this.api.subagents.history(request)
       case 'subagent.prompt': return this.api.subagents.prompt(request, signal)
       case 'subagent.interrupt': return this.api.subagents.interrupt(request)
+      case 'collaboration.create': return this.api.collaboration.create(request, signal)
+      case 'collaboration.list': return this.api.collaboration.list(request)
+      case 'collaboration.get': return this.api.collaboration.get(request)
+      case 'collaboration.readArtifact': return this.api.collaboration.readArtifact(request)
+      case 'collaboration.events': return this.api.collaboration.events(request)
+      case 'collaboration.send': return this.api.collaboration.send(request)
+      case 'collaboration.retryFormation': return this.api.collaboration.retryFormation(request, signal)
+      case 'collaboration.cancel': return this.api.collaboration.cancel(request)
+      case 'collaboration.complete': return this.api.collaboration.complete(request)
       case 'host.describe': return this.api.host.describe(request)
       case 'host.pickDirectory': return this.api.host.pickDirectory(request, new AbortController().signal)
       case 'host.listDirectory': return this.api.host.listDirectory(request, new AbortController().signal)

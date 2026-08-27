@@ -101,7 +101,9 @@ A **seam** is a swappable capability with three roles: a **Service Definition** 
 
 Seams are why one provider swap changes the whole product. Filesystem and subprocess providers share one execution world, so pointing them at a remote sandbox moves Bash, PTY, and LSP with them, with no provider forks. [Subagent providers](subsystems/subagent.md) vary just as widely behind one interface, from a fresh child agent to a delegated turn in another product.
 
-[Experimental Agent Teams](subsystems/agent-team.md) is a private opt-in coordination seam on `ctx.agentTeams`, with a durable roster, task board, and mailbox layered over continuable subagents.
+[Stable TeamRun collaboration](subsystems/agent-team.md) is the product-domain seam on `ctx.teamRuns`. One Lead Session log owns exact formation state, expert attempts, a compare-and-set task DAG, and public-only typed collaboration records. The P2 [`expert-catalog`](../packages/collaboration/expert-catalog/README.md) admits exact local ExpertBlueprint revisions and resolves preset, skill, and plugin content into one immutable digest; [`expert-runtime`](../packages/collaboration/expert-runtime/README.md) binds that digest to the Lead and child logs, creates the real continuable child before its first prompt, enforces execution budgets, and fails closed when recovery resolves different capabilities. During automatic planning, [`skill-marketplace`](../packages/skill/skill-marketplace/README.md) independently discovers task-relevant candidates and the accepted plan retains their readiness; only persisted loaded method skills enter the selected child's skill catalog. These layers use agent creation, preset, subagent, Session, and pre-step extension points without importing the concrete agent loop
+
+The historical experimental Agent Teams service remains a private opt-in seam on `ctx.agentTeams` for its existing example during migration. Its `team/*` records and the stable service's `collaboration/*` records are intentionally isolated.
 
 ## Where new behavior goes
 

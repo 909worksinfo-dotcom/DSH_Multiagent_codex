@@ -21,12 +21,20 @@ export type PanelActions = BoundActions<ReturnType<typeof createLayoutStore>>
  * only).
  */
 export interface ILayout {
+  /** Show the ordinary single-agent conversation workspace. */
+  enterConversation(): void
+  /** Show the dedicated multi-agent collaboration workspace. */
+  enterCollaboration(): void
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
   toggleSidebar(): void
   /** Open the details panel (no-op when already open). */
   openDetails(): void
   /** Close the details panel. */
   closeDetails(): void
+  /** Open the collaboration dock and close the mutually exclusive details panel. */
+  openCollaboration(): void
+  /** Close the collaboration dock. */
+  closeCollaboration(): void
 }
 
 /** Cross-plugin panel-action face (ctx.layout). */
@@ -44,6 +52,14 @@ export class LayoutController implements ILayout {
     this.#panels = actions
   }
 
+  enterConversation(): void {
+    this.#require().enterConversation()
+  }
+
+  enterCollaboration(): void {
+    this.#require().enterCollaboration()
+  }
+
   /** Toggle the sidebar panel (closed ⟷ contract default width). */
   toggleSidebar(): void {
     this.#require().toggleSidebar()
@@ -57,6 +73,14 @@ export class LayoutController implements ILayout {
   /** Close the details panel. */
   closeDetails(): void {
     this.#require().closeDetails()
+  }
+
+  openCollaboration(): void {
+    this.#require().openCollaboration()
+  }
+
+  closeCollaboration(): void {
+    this.#require().closeCollaboration()
   }
 
   #require(): PanelActions {

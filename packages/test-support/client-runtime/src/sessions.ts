@@ -184,7 +184,7 @@ export class TestSessions implements ISessions {
 
   /** Calls observed on the service-level face, newest last. */
   readonly calls: {
-    method: 'open' | 'openSubagent' | 'setSubagentCatalogOpen' | 'refreshSubagents'
+    method: 'create' | 'open' | 'openSubagent' | 'setSubagentCatalogOpen' | 'refreshSubagents'
       | 'clear' | 'search' | 'fork'
     args: unknown[]
   }[] = []
@@ -396,6 +396,18 @@ export class TestSessions implements ISessions {
     const id = scopeOf(ctx)
     if (id === undefined) return undefined
     return this.records.get(id)?.session
+  }
+
+  /**
+   * Create an addressable fixture session with a generated identity.
+   * @param opts - optional preallocated identity; workspace and cwd are retained only in the recorded call.
+   * @returns the created session id.
+   */
+  async create(opts: Parameters<ISessions['create']>[0] = {}): Promise<SessionId> {
+    this.calls.push({ method: 'create', args: [opts] })
+    const id = opts.sessionId ?? (`test-created-${this.records.size + 1}` as SessionId)
+    await this.add({ id }, { current: false })
+    return id
   }
 
   /**

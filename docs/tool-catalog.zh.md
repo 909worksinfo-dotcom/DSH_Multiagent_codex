@@ -40,6 +40,7 @@
 | `@deepseek-ai/dsh-tool-subagent-report` | `report` | `ctx.subagents`、`ctx.systemPrompt`、`a live continuable in-process child Agent` | `tool/call`、`tool/result`、`a user-role message in the direct parent session` | - | 按可继续的进程内子级注册，而非全局注册，因此该 schema 仅在这种子级内部可见，并且不受其全局 `toolFilter` 影响。同一份贡献还会安装子级作用域的 `tool:report` 系统提示词 section，本目录不渲染该 section。面向父级的 `send_message` 工具单独安装。 |
 | `@deepseek-ai/dsh-tool-jobs` | `job_kill`、`job_list`、`job_output` | `ctx.tools`、`ctx.jobs`、`ctx.systemPrompt` | `tool/call`、`tool/result`、`user/message via agent.inject() for background completion notices` | - | 与任务种类无关的后台任务控制器：后台 bash 命令、PTY 发送和 subagent 都通过相同的 3 个工具读取、列出和终止。加载该插件会挂接控制器，从而启用生产方的 `ctx.jobs.start()`。 |
 | `@deepseek-ai/dsh-experimental-tool-agent-team` | `followup_task`、`interrupt_agent`、`list_agents`、`send_message`、`spawn_teammate`、`team_task_create`、`team_task_get`、`team_task_list`、`team_task_update`、`wait_agent` | `ctx.tools`、`ctx.systemPrompt`、`ctx.agentTeams`、`an exact live Team member Agent` | `tool/call`、`team/member`、`team/message/queued`、`team/message/delivered`、`team/task`、`tool/result` | - | 这 10 个工具限定于隐式 Team Lead 与持久 teammate 作用域。随产品发布的 dsh-base bundle 默认禁用该包；文档中的 Agent Teams profile patch 会启用它，并禁用旧 continuable child 的同名控制工具。 |
+| `@deepseek-ai/dsh-tool-agent-team` | `collaboration_artifact_read`、`collaboration_artifact_write`、`collaboration_complete`、`collaboration_control`、`collaboration_controller_get`、`collaboration_decision_write`、`collaboration_get`、`collaboration_quality_update`、`collaboration_send`、`collaboration_task_create`、`collaboration_task_get`、`collaboration_task_list`、`collaboration_task_update` | `ctx.tools`、`ctx.systemPrompt`、`ctx.teamRuns`、`an exact live TeamRun member Agent` | `tool/call`、`collaboration/task`、`collaboration/message`、`tool/result` | - | 这 13 个工具仅对已准入的稳定 TeamRun 成员开放。它们读取唯一权威服务，仅发布公开的类型化协作记录，并更新基于比较并设置的任务 DAG；组队与绑定 ExpertBlueprint 的子级激活仍由 controller 负责 |
 | `@deepseek-ai/dsh-tool-todo` | `todo_write` | `ctx.tools`、`owning Agent session` | `tool/call`、`todo/write`、`tool/result` | - | todo_write 是会话所有的状态；UI 将最新的 todo/write 事件渲染为检查清单。`allowParallelInProgress` 是没有默认值的必填项，因此本目录明确选择 `true`，对应描述允许同时存在多个 `in_progress` 项。选择 `false` 的部署会获得同一工具，但描述会要求只能有 1 个活动任务。 |
 | `@deepseek-ai/dsh-tool-workflow` | `workflow` | `ctx.tools`、`ctx.workflowEngine`、`ctx.systemPrompt`、`a calling Agent (exec.agent parents the script children)` | `tool/call`、`tool/result` | - | - |
 | `@deepseek-ai/dsh-tool-web` | `web_fetch`、`web_search` | `ctx.tools`、`ctx.web`、`ctx.systemPrompt` | `tool/call`、`tool/result` | - | web_search 和 web_fetch 将提供方选择置于 ctx.web 之后，使模型可见 schema 在更换后端时保持稳定。 |
@@ -1712,7 +1713,7 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 与任务种类无关的后台任务控制器：后台 bash 命令、PTY 发送和 subagent 都通过相同的 3 个工具读取、列出和终止。加载该插件会挂接控制器，从而启用生产方的 `ctx.jobs.start()`。
 
-<a id="deepseek-aidsh-tool-todo"></a>
+<a id="deepseek-aidsh-experimental-tool-agent-team"></a>
 
 ## `@deepseek-ai/dsh-experimental-tool-agent-team`
 
@@ -2028,6 +2029,534 @@ lsp 工具将提供方选择和语言服务器子进程置于 ctx.lsp 之后，�
 
 这 10 个工具限定于隐式 Team Lead 与持久 teammate 作用域。随产品发布的 dsh-base bundle 默认禁用该包；文档中的 Agent Teams profile patch 会启用它，并禁用旧 continuable child 的同名控制工具。
 
+
+<a id="deepseek-aidsh-tool-agent-team"></a>
+
+## `@deepseek-ai/dsh-tool-agent-team`
+
+### `collaboration_artifact_read`
+
+通过当前 TeamRun 成员权限读取一份完整的产物正文
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "artifact_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "artifact_id"
+  ]
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_artifact_write`
+
+写入一版有界、带版本的产物，仅向公开时间线发布不含正文的元数据
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "artifact_id": {
+      "type": "string",
+      "description": "Existing artifact id for an update; omit to create."
+    },
+    "expected_version": {
+      "type": "integer",
+      "description": "Zero to create or the current version to update."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "document",
+        "code",
+        "dataset",
+        "evidence",
+        "analysis",
+        "product_spec",
+        "design",
+        "test_report",
+        "final_delivery"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "body": {
+      "type": "string",
+      "description": "Complete artifact body; never included in collaboration_get."
+    },
+    "media_type": {
+      "type": "string"
+    },
+    "task_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "review",
+        "accepted",
+        "superseded"
+      ]
+    }
+  },
+  "required": [
+    "expected_version",
+    "kind",
+    "title",
+    "body",
+    "media_type",
+    "status"
+  ]
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_complete`
+
+仅限 Lead 在所有任务和公开评审证据完成后执行原子化结项
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "thread_id": {
+      "type": "string",
+      "description": "Public delivery thread id. Defaults to main."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Optional completed task summarized by the delivery."
+    },
+    "decision_id": {
+      "type": "string",
+      "description": "Optional public decision summarized by the delivery."
+    },
+    "artifact_id": {
+      "type": "string",
+      "description": "Optional public artifact delivered to the user."
+    },
+    "content": {
+      "type": "string",
+      "description": "Complete user-safe final delivery."
+    }
+  },
+  "required": [
+    "content"
+  ]
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_control`
+
+仅限 Lead 执行原子化重新分配、返工或重规划，同时完成任务 CAS、决策账本和公开证据记录
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "expected_revision": {
+      "type": "integer"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "expected_task_revision": {
+      "type": "integer"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "reassign",
+        "rework",
+        "replan"
+      ]
+    },
+    "owner": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Concise user-safe correction rationale."
+    }
+  },
+  "required": [
+    "expected_revision",
+    "task_id",
+    "expected_task_revision",
+    "action",
+    "rationale"
+  ]
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_controller_get`
+
+读取确定性的健康状态、停滞任务、重复工作、质量失败和推荐的 Lead 操作
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_decision_write`
+
+仅限 Lead 进行比较并设置裁决，并原子化发布一条公开决策记录
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "decision_id": {
+      "type": "string",
+      "description": "Existing decision id for an update; omit to create."
+    },
+    "expected_version": {
+      "type": "integer"
+    },
+    "subject": {
+      "type": "string"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "rejected",
+        "revise",
+        "unresolved",
+        "reassign",
+        "rework",
+        "replan"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Concise user-safe rationale, never private reasoning."
+    },
+    "task_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "artifact_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "expected_version",
+    "subject",
+    "outcome",
+    "summary",
+    "rationale"
+  ]
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_get`
+
+读取权威 TeamRun 生命周期、计划专家数量、roster 尝试记录、容量和失败状态
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_quality_update`
+
+仅限 Lead 为一个已物化的 Charter 质量门提交正式质量结果
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "gate_id": {
+      "type": "string"
+    },
+    "expected_version": {
+      "type": "integer"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "passed",
+        "failed"
+      ]
+    },
+    "summary": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "artifact_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "gate_id",
+    "expected_version",
+    "status",
+    "summary"
+  ]
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_send`
+
+发布一条类型化的公开 TeamRun 消息，此工具绝不接受私有推理或思维链
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "description": "Public statement category; ledger receipts use their owning tools.",
+      "enum": [
+        "task",
+        "inform",
+        "proposal",
+        "request_help",
+        "challenge",
+        "response",
+        "review",
+        "handoff",
+        "blocked",
+        "completion_request",
+        "status"
+      ]
+    },
+    "thread_id": {
+      "type": "string",
+      "description": "Required explicit dispute thread for challenge/response; ordinary messages default to main."
+    },
+    "targets": {
+      "type": "array",
+      "description": "Exactly one explicit participant for challenge/response; otherwise protocol-allowed names or lead.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Optional current non-deleted task reference."
+    },
+    "challenge_id": {
+      "type": "string",
+      "description": "Optional challenge reference."
+    },
+    "decision_id": {
+      "type": "string",
+      "description": "Optional decision reference."
+    },
+    "artifact_id": {
+      "type": "string",
+      "description": "Optional artifact reference."
+    },
+    "content": {
+      "type": "string",
+      "description": "Concise user-safe public content."
+    }
+  },
+  "required": [
+    "kind",
+    "content"
+  ]
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_task_create`
+
+创建一个无所有者的待处理任务，并设置依赖项与通用建议性资源作用域
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "subject": {
+      "type": "string",
+      "description": "Concise task title."
+    },
+    "description": {
+      "type": "string",
+      "description": "Complete objective and acceptance information."
+    },
+    "blocked_by": {
+      "type": "array",
+      "description": "Existing task ids that must complete first.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resource_scopes": {
+      "type": "array",
+      "description": "Generic advisory ownership prefixes.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "subject",
+    "description"
+  ]
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_task_get`
+
+在更改或执行 TeamRun 任务前，读取其最新的完整值
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "TeamRun task id."
+    }
+  },
+  "required": [
+    "task_id"
+  ]
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_task_list`
+
+列出当前 TeamRun 任务及其 revision、就绪状态、依赖关系、所有权和建议性冲突
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "cursor": {
+      "type": "integer",
+      "description": "Zero-based result offset. Defaults to 0."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Number of rows, 1 through 100. Defaults to 50."
+    }
+  }
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+### `collaboration_task_update`
+
+使用最新任务 revision，以比较并设置方式执行一项 TeamRun 任务操作
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "description": "TeamRun task id."
+    },
+    "expected_revision": {
+      "type": "integer",
+      "description": "Current task revision."
+    },
+    "action": {
+      "type": "string",
+      "description": "Task transition to apply.",
+      "enum": [
+        "claim",
+        "release",
+        "edit",
+        "set_dependencies",
+        "complete",
+        "reopen",
+        "reassign",
+        "delete"
+      ]
+    },
+    "subject": {
+      "type": "string",
+      "description": "Replacement title for edit."
+    },
+    "description": {
+      "type": "string",
+      "description": "Replacement details for edit."
+    },
+    "blocked_by": {
+      "type": "array",
+      "description": "Complete blocker list for set_dependencies.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resource_scopes": {
+      "type": "array",
+      "description": "Replacement advisory scopes for edit.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "owner": {
+      "type": "string",
+      "description": "Member name, lead, or empty for Lead-only reassign."
+    }
+  },
+  "required": [
+    "task_id",
+    "expected_revision",
+    "action"
+  ]
+}
+```
+
+来源：[`packages/collaboration/tool-agent-team/src/index.ts`](../packages/collaboration/tool-agent-team/src/index.ts)
+
+这 13 个工具仅对已准入的稳定 TeamRun 成员开放。它们读取唯一权威服务，仅发布公开的类型化协作记录，并更新基于比较并设置的任务 DAG；组队与绑定 ExpertBlueprint 的子级激活仍由 controller 负责
+
+<a id="deepseek-aidsh-tool-todo"></a>
 
 ## `@deepseek-ai/dsh-tool-todo`
 

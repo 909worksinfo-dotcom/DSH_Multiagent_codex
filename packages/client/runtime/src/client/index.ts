@@ -11,6 +11,7 @@ import { SlotRegistry } from './slots.ts'
 import { SessionRuntime } from './sessions/service.ts'
 import type { SessionListState } from './sessions/service.ts'
 import { WorkspaceRuntime } from './workspaces/service.ts'
+import { CollaborationRuntime } from './collaboration/service.ts'
 import type { ConversationSnapshot } from './sessions/conversation.ts'
 import type { UseProjection } from './sessions/projection-store.ts'
 import { ConversationEventRegistry } from './conversation/event-registry.ts'
@@ -46,6 +47,25 @@ export type { SessionProvideChannelHost } from './sessions/provide.ts'
 export { createScope } from './agents/scope.ts'
 export type { AgentScopeHandle } from './agents/scope.ts'
 export { DirectoryBrowseError, WorkspaceCreateError, WorkspaceRuntime } from './workspaces/service.ts'
+export { CollaborationClientError, CollaborationRuntime } from './collaboration/service.ts'
+export { collaborationLeadSessionId, isCollaborationLeadSessionId } from './contract/collaboration.ts'
+export type {
+  CollaborationArtifact, CollaborationArtifactKind, CollaborationArtifactStatus,
+  CollaborationCatalogSnapshot, CollaborationComplexity, CollaborationController,
+  CollaborationControllerHealth, CollaborationControllerRecommendedAction,
+  CollaborationDecision, CollaborationDecisionOutcome,
+  CollaborationExpertMember, CollaborationFailure, CollaborationLanguage,
+  CollaborationLevel, CollaborationMemberPhase, CollaborationProgress,
+  CollaborationProtocol, CollaborationProtocolChallenge, CollaborationProtocolMember,
+  CollaborationProtocolMode, CollaborationProtocolPermissions,
+  CollaborationPublicActor, CollaborationPublicMessage,
+  CollaborationPublicMessageKind, CollaborationPublicReferences, CollaborationTask,
+  CollaborationQualityGate, CollaborationQualityGateStatus, CollaborationTaskStatus,
+  CollaborationRunId, CollaborationRunPhase, CollaborationRunSnapshot, CollaborationRunStatus,
+  CollaborationSafeCapabilityMetadata, CollaborationSafeExpertBindingMetadata,
+  CollaborationTaskProfile, CollaborationTeamCharter, CollaborationTopology,
+  CreateCollaborationRunRequest, ICollaboration,
+} from './contract/collaboration.ts'
 export { abbreviateHomePath, resolveWorkspacePath } from './workspaces/path.ts'
 // Contract only: the scope implementation and its Host transport belong to
 // dsh-client-ui-settings (see that package's settings-scope.ts).
@@ -73,7 +93,7 @@ export type {
 } from './contract/store.ts'
 export type {
   AssistantBlock, AssistantMessageNode, AssistantProvenanceView, AssistantRequestConfig,
-  AssistantTiming, ChatLocationNodeIndex, ChatNodeStore, ChatSnapshot,
+  AssistantTiming, ChatFlowItem, ChatLocationNodeIndex, ChatNodeStore, ChatSnapshot,
   CommandNode, CompactionSummaryNode, ComposerPhase,
   ContextMessageNode, ConversationNode, ConversationSnapshot, ModelRetryNode, QueuedMessage,
   LegacyConversationSlice, PartialAssistant, RunningToolCall,
@@ -176,6 +196,8 @@ declare module '@deepseek-ai/cordis' {
     sessions: import('./contract/sessions.ts').ISessions
     /** The outward face only; the concrete service stays inside the runtime. */
     workspaces: import('./contract/workspaces.ts').IWorkspaces
+    /** Authoritative TeamRun catalog and automatic formation actions. */
+    collaboration: import('./contract/collaboration.ts').ICollaboration
   }
 }
 
@@ -193,6 +215,8 @@ export function apply(ctx: Context): void {
   }
   const connection = ctx.get('connection') as ConnectionHandle
   const sessions = new SessionRuntime(ctx, connection.api, ctx.remote, conversation)
+  const collaboration = new CollaborationRuntime(ctx, connection.api, sessions)
+  void collaboration.refresh()
   ctx.typert.contexts.registerClient('agent', {
     identity: candidate => sessions.scopeOf(candidate),
   })

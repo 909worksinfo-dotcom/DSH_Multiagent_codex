@@ -141,6 +141,27 @@ export class FakeApiClient implements IApiClient {
     }))),
   }
 
+  readonly collaboration: IApiClient['collaboration'] = {
+    create: (payload: unknown) => this.record(
+      'collaboration.create', payload, Promise.reject(new Error('collaboration.create is not programmed'))),
+    list: (payload: unknown) => this.record(
+      'collaboration.list', payload, Promise.resolve(ok({ runs: [] }))),
+    get: (payload: unknown) => this.record(
+      'collaboration.get', payload, Promise.reject(new Error('collaboration.get is not programmed'))),
+    readArtifact: (payload: unknown) => this.record(
+      'collaboration.readArtifact', payload, Promise.reject(new Error('collaboration.readArtifact is not programmed'))),
+    events: (payload: unknown) => this.record(
+      'collaboration.events', payload, Promise.reject(new Error('collaboration.events is not programmed'))),
+    send: (payload: unknown) => this.record(
+      'collaboration.send', payload, Promise.reject(new Error('collaboration.send is not programmed'))),
+    retryFormation: (payload: unknown) => this.record(
+      'collaboration.retryFormation', payload, Promise.reject(new Error('collaboration.retryFormation is not programmed'))),
+    cancel: (payload: unknown) => this.record(
+      'collaboration.cancel', payload, Promise.reject(new Error('collaboration.cancel is not programmed'))),
+    complete: (payload: unknown) => this.record(
+      'collaboration.complete', payload, Promise.reject(new Error('collaboration.complete is not programmed'))),
+  }
+
   readonly host: IApiClient['host'] = {
     describe: payload => this.record('host.describe', payload, this.onDescribe(payload)),
     pickDirectory: payload => this.record('host.pickDirectory', payload, this.onPickDirectory(payload)),

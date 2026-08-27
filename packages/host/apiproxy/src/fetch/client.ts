@@ -67,6 +67,17 @@ import {
   subagentListValueSchema,
   subagentPromptValueSchema,
 } from '../api/subagents.schema.ts'
+import {
+  collaborationCancelValueSchema,
+  collaborationCompleteValueSchema,
+  collaborationCreateValueSchema,
+  collaborationEventsValueSchema,
+  collaborationGetValueSchema,
+  collaborationReadArtifactValueSchema,
+  collaborationListValueSchema,
+  collaborationRetryFormationValueSchema,
+  collaborationSendValueSchema,
+} from '../api/collaboration.schema.ts'
 
 /**
  * Client consumption face of the contract (shape a): same domain tree as ApiProxy, but unary
@@ -104,6 +115,17 @@ export interface IApiClient {
     history(payload: RequestPayload<'subagent.history'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'subagent.history'>>>
     prompt(payload: RequestPayload<'subagent.prompt'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'subagent.prompt'>>>
     interrupt(payload: RequestPayload<'subagent.interrupt'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'subagent.interrupt'>>>
+  }
+  collaboration: {
+    create(payload: RequestPayload<'collaboration.create'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'collaboration.create'>>>
+    list(payload: RequestPayload<'collaboration.list'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'collaboration.list'>>>
+    get(payload: RequestPayload<'collaboration.get'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'collaboration.get'>>>
+    readArtifact(payload: RequestPayload<'collaboration.readArtifact'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'collaboration.readArtifact'>>>
+    events(payload: RequestPayload<'collaboration.events'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'collaboration.events'>>>
+    send(payload: RequestPayload<'collaboration.send'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'collaboration.send'>>>
+    complete(payload: RequestPayload<'collaboration.complete'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'collaboration.complete'>>>
+    retryFormation(payload: RequestPayload<'collaboration.retryFormation'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'collaboration.retryFormation'>>>
+    cancel(payload: RequestPayload<'collaboration.cancel'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'collaboration.cancel'>>>
   }
   host: {
     describe(payload: RequestPayload<'host.describe'>, signal?: AbortSignal): Promise<RpcResponse<ResponseValue<'host.describe'>>>
@@ -186,6 +208,15 @@ const UNARY_VALUE_SCHEMAS: { [K in keyof RpcMethodMap]: z.ZodType<Wire<ResponseV
   'subagent.history': subagentHistoryValueSchema,
   'subagent.prompt': subagentPromptValueSchema,
   'subagent.interrupt': subagentInterruptValueSchema,
+  'collaboration.create': collaborationCreateValueSchema,
+  'collaboration.list': collaborationListValueSchema,
+  'collaboration.get': collaborationGetValueSchema,
+  'collaboration.readArtifact': collaborationReadArtifactValueSchema,
+  'collaboration.events': collaborationEventsValueSchema,
+  'collaboration.send': collaborationSendValueSchema,
+  'collaboration.complete': collaborationCompleteValueSchema,
+  'collaboration.retryFormation': collaborationRetryFormationValueSchema,
+  'collaboration.cancel': collaborationCancelValueSchema,
   'host.describe': hostDescribeValueSchema,
   'host.pickDirectory': hostPickDirectoryValueSchema,
   'host.listDirectory': hostListDirectoryValueSchema,
@@ -429,6 +460,18 @@ export abstract class AbstractApiClient implements IApiClient {
     history: (payload, signal) => this.callUnary('subagent.history', payload, signal),
     prompt: (payload, signal) => this.callUnary('subagent.prompt', payload, signal),
     interrupt: (payload, signal) => this.callUnary('subagent.interrupt', payload, signal),
+  }
+
+  readonly collaboration: IApiClient['collaboration'] = {
+    create: (payload, signal) => this.callUnary('collaboration.create', payload, signal, 'caller-signal-only'),
+    list: (payload, signal) => this.callUnary('collaboration.list', payload, signal),
+    get: (payload, signal) => this.callUnary('collaboration.get', payload, signal),
+    readArtifact: (payload, signal) => this.callUnary('collaboration.readArtifact', payload, signal),
+    events: (payload, signal) => this.callUnary('collaboration.events', payload, signal),
+    send: (payload, signal) => this.callUnary('collaboration.send', payload, signal),
+    complete: (payload, signal) => this.callUnary('collaboration.complete', payload, signal),
+    retryFormation: (payload, signal) => this.callUnary('collaboration.retryFormation', payload, signal, 'caller-signal-only'),
+    cancel: (payload, signal) => this.callUnary('collaboration.cancel', payload, signal),
   }
 
   readonly host: IApiClient['host'] = {

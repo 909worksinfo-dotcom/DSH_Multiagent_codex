@@ -22,6 +22,8 @@ Settings 分节中的 `reasoningEffort` 在 agent-default-model 插件配置中�
 
 分层与协议决策记录在 [GUI 分层与 RPC 协议 RFC](../../../.agents/notes/implemented/architecture/2026-07-19-gui-layering-and-rpc-protocol.md) 中；浏览器侧消费架构记录在 [Web 客户端架构 RFC](../../../.agents/notes/implemented/architecture/2026-07-19-gui-web-client-architecture.md) 中。
 
+`collaboration.*` 领域会从一个精确 live 或已恢复 Lead 投影 P6 task、artifact 元数据、decision、quality-gate、controller、progress 与 collaboration-protocol 账本。Artifact 正文不会进入 list/get 响应，只能通过严格的 `collaboration.readArtifact({runId, artifactId})` 读取；其请求拒绝未知字段，每个 actor 字段保留完整且允许公开的 Lead 或 expert identity。progress 值携带权威 artifact、decision、pending-gate、passed-gate 与 failed-gate 数量，客户端无需派生第二份账本。严格 protocol union 只暴露 limit 为 null 且 row 为空的精确 `legacy` 模式，或暴露 topology、正数 limit、一至八条 member 用量与 route row 和已关联 challenge 状态的 `enforced` 模式；Host 响应边界会拒绝不可能的混合状态
+
 首个回答认领待处理请求之前，系统会对照该请求校验问题响应。多选题的回答项可以同时携带 `selected` 中的请求选项标签与非空 `custom` 文本；单选题的回答项必须二选一。标签重复、标签未知、id 不匹配、批次不完整以及自定义文本为空都会以 `bad-response` 拒绝。
 
 `session.history` 会读取已附加 Session 的内存状态，或通过持久化检查冷日志，而不会恢复或发布 agent，然后按追加来源的消息边界分页：`maxMessages` 统计以追加方式进入 surface 的 `user/message` 和 `assistant/message` 事件，因此仅供模型使用的替换副本不占用配额。每一页仍是一段连续的原始事件区间，从而让压缩（compaction）的仅日志 `compaction/summary` 记录与引用它的替换留在同一页。

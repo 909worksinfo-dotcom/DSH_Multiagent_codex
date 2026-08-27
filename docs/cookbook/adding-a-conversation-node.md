@@ -197,6 +197,8 @@ export function apply(ctx: ClientContext): void {
 
 `buildLocationData(context, scope)` optionally publishes Definition-owned data onto an engine-owned Turn or Step. Use declaration merging to give each key a precise value type. Another Node in the same Location can consume that value through its constrained slot hook, such as `useTurnData(key)`, without receiving the Session or scanning `snapshot.chat.nodes`.
 
+A Definition may set `flow: 'activity'` on a low-priority process node. `ChatSnapshotBuilder` groups contiguous opted-in nodes into bounded scrolling activity regions; an ordinary node splits adjacent regions. Opt in from business semantics only. Prose, images, errors, retries, commands, pending interactions, and other output that requires full transcript space remain ordinary nodes. Changing `flow` is structural and preserves the node's stable key.
+
 `target` and `buildViewNode(context)` declare one target-owned rendering contribution and must appear together. Preserve `context.key` as the React-facing identity, choose `anchorSeq` from durable ordering evidence, and return only renderer-ready data. Once a target Node has been published, keep returning the same key; use `visibility: 'hidden'` when it must temporarily leave the visible flow rather than withdrawing it with `null`.
 
 ## 3. Query an earlier business Context only at start

@@ -81,7 +81,9 @@ export const messageDefinition: ConversationNodeDefinition<MessageNode> = {
   update: context => context.state,
   buildViewNode: (context) => {
     if (context.state === undefined) return null
-    return chatNode(context, context.state.kind, context.state.seq, context.state)
+    return context.state.kind === 'context'
+      ? chatNode(context, 'context', context.state.seq, context.state, { flow: 'activity' })
+      : chatNode(context, context.state.kind, context.state.seq, context.state)
   },
 }
 

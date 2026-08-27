@@ -17,6 +17,7 @@ import { CallId } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-compaction-basic'
 import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-expert-catalog'
 // Type-only: resolves `ctx.get('sessionProjections')` and `ctx.get('tokenMeter')`.
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-token-meter'
@@ -371,6 +372,19 @@ describe('the shipped Web composition', () => {
     expect((await readFile(skill, 'utf8')).startsWith('---\nname: editing-cordis-compositions')).toBe(true)
   })
 
+  it('resolves at least two distinct local skills for every shipped collaboration expert', async () => {
+    const catalog = ctx.get('expertCatalog')
+    if (catalog === undefined) throw new Error('the Web composition must provide the expert catalog')
+    const refs = catalog.list()
+    expect(refs).toHaveLength(24)
+    for (const ref of refs) {
+      const blueprint = catalog.get(ref)
+      expect(new Set(blueprint.skills).size).toBeGreaterThanOrEqual(2)
+      const binding = await catalog.resolve(ref)
+      expect(new Set(binding.skills.map(skill => skill.name)).size).toBeGreaterThanOrEqual(2)
+    }
+  })
+
   it('merges the global skill layer into a preset agent\'s catalog, keeping local discovery preset-side', async () => {
     const proj = await mkdtemp(join(tmpdir(), 'dsh-preset-skill-proj-'))
     await mkdir(join(proj, '.dsh', 'skills', 'project-proof'), { recursive: true })
@@ -667,8 +681,8 @@ describe('a delegated child', () => {
     const child = await parent.agent.ctx.agents.create({
       sessionId: SessionId('preset-child'),
       meta: childSessionMeta(parent.agent, 1, 0),
-      setup: (agentCtx) => {
-        applyChildComposition(agentCtx, parent.agent, {})
+      setup: async (agentCtx) => {
+        await applyChildComposition(agentCtx, parent.agent, {})
       },
     })
     try {
@@ -693,8 +707,8 @@ describe('a delegated child', () => {
     const child = await parent.agent.ctx.agents.create({
       sessionId: SessionId('preset-child-switch'),
       meta: childSessionMeta(parent.agent, 1, 0),
-      setup: (agentCtx) => {
-        applyChildComposition(agentCtx, parent.agent, {})
+      setup: async (agentCtx) => {
+        await applyChildComposition(agentCtx, parent.agent, {})
       },
     })
     try {

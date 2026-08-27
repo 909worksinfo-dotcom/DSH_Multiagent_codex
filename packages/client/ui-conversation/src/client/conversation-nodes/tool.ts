@@ -7,6 +7,7 @@ import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-tools/types'
 import type { ToolChatData } from '../contract/chat-nodes.ts'
 import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode } from './common.ts'
+import { isCompactToolActivity, isSummarizedToolActivity } from './tool-activity.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
   interface ChatNodeDataMap {
@@ -223,6 +224,15 @@ function interruption(context: ConversationNodeContext<ToolState>): { seq: numbe
   return undefined
 }
 
+function isClosedTurn(context: ConversationNodeContext<ToolState>): boolean {
+  const location = context.start?.location
+  return (location?.kind === 'step' || location?.kind === 'turn') && location.turn.status === 'closed'
+}
+
+function toolName(block: ToolCallBlock): string | undefined {
+  return 'kind' in block ? block.call?.name : block.name
+}
+
 function fallbackState(context: ConversationNodeContext<ToolState>): ToolState | undefined {
   const match = context.matches.find(candidate => candidate.event.type === 'tool/result')
   const root = match === undefined ? undefined : rootResult(match)
@@ -262,9 +272,20 @@ export const toolDefinition: ConversationNodeDefinition<ToolState> = {
     const state = context.state ?? fallbackState(context)
     if (state === undefined) return null
     const projected = projectBlock(state.root, state, interruption(context))
+    const name = toolName(projected)
+    const compact = isCompactToolActivity(name)
+    const summarized = isSummarizedToolActivity(name)
+    const visibility = isClosedTurn(context) && summarized ? 'hidden' : 'visible'
+    const flow = compact ? 'activity' as const : undefined
     const anchor = context.start?.event.seq
       ?? ('kind' in state.root ? state.root.seq : context.matches[0]?.event.seq ?? 0)
-    return chatNode(context, 'tool-call', anchor, { root: projected } satisfies ToolChatData)
+    return chatNode(
+      context,
+      'tool-call',
+      anchor,
+      { root: projected } satisfies ToolChatData,
+      { visibility, ...flow === undefined ? {} : { flow } },
+    )
   },
 }
 

@@ -8,6 +8,10 @@
 
 设置所有者共用本包定义的不依赖 React 的 `SettingsScopeSpec`、`SettingsScope` 与快照类型。ui-settings 拥有 `ctx.settingsScope.bind(spec)`、对应的 Host 传输、schema 校验与生命周期；详见[该包的约定](../ui-settings/README.md)。
 
+## 协作运行时
+
+`CollaborationRuntime` 拥有浏览器侧权威 TeamRun 目录，并确保展示 store 不持有业务权威。创建流程会预分配并命名一个 Lead Session；如果组队在提交前被拒绝，则移除该空 Session；已经提交的失败 TeamRun 会保留，供不可变重试审计。每份 Host 紧凑快照都携带当前任务与进度账本、版本化资产元数据、独立 Lead 决策、已物化质量门禁、确定性控制器投影、已强制的协作协议和 Session cursor。协议投影包含兼容模式、拓扑、限额、成员权限、允许路由、已持久化消息用量与质疑回应状态；旧任务会显式标记为 legacy，不从 Charter 或时间线文本重建协议。资产正文绝不进入该目录。运行时从已保留的排他 cursor 之后分页读取 `collaboration.events`，拒绝不推进或乱序的分页，按稳定 event id 去重，并且仅在公开时间线到达同一 cursor 后发布 run。重连会先刷新紧凑目录，再续读每条公开事件流；浏览器不会从消息文本推断业务状态，也不表示模型私有思考
+
 ## Slot 声明注入
 
 `ctx.slots.inject(name, callback)` 将完整的 `SlotMap` key 作为贡献项的依赖，适用于贡献方插件可独立于声明条目激活的情形。声明存在时，它会同步运行 `callback`，否则等待；声明折叠会 dispose（资源释放）回调 effect，重新声明则会再次运行回调。控制器归调用方的插件 fiber 所有，因此卸载贡献方会取消等待或移除其活跃注册项。直接调用 `slots.register()` 向未声明 slot 注册仍会抛出异常。

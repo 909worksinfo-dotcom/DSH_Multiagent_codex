@@ -95,6 +95,9 @@ const user = (seq: number, text: string): UserMessageNode => ({
 const assistant = (seq: number, text: string, turn = 1): AssistantMessageNode => ({
   kind: 'assistant', seq, time: seq * 1_000, turn, step: 1, blocks: [{ kind: 'text', text }],
 })
+const reasoning = (seq: number, text: string, turn = 1): AssistantMessageNode => ({
+  kind: 'assistant', seq, time: seq * 1_000, turn, step: seq, blocks: [{ kind: 'reasoning', text }],
+})
 const retry = (seq: number): ModelRetryNode => ({
   kind: 'model-retry', retryId: 'chat-view-retry' as ModelRetryNode['retryId'],
   seq, time: seq * 1_000, turn: 1, step: 0,
@@ -416,6 +419,59 @@ describe('ChatView', () => {
     nextTop = 560
     act(() => { h.set({ nodes: [assistant(2, 'older'), user(9, 'first visible'), user(10, 'next visible')] }) })
     expect(scroller.scrollTop).toBe(590) // latest 90 + the anchored row's 500px prepend shift
+  })
+
+  it('bounds contiguous process rows while preserving disclosures and important prose outside', () => {
+    const context = {
+      kind: 'context', seq: 2, time: 2_000, content: [], source: null,
+      provenance: { role: 'inject', label: 'AGENTS.md' },
+      form: null,
+    } as const satisfies ConversationNode
+    const h = makeHarness({
+      nodes: [
+        user(1, 'inspect'),
+        context,
+        reasoning(3, 'First reasoning detail'),
+        reasoning(4, 'Second reasoning detail'),
+        reasoning(5, 'Third reasoning detail'),
+        assistant(6, 'Important intermediate output'),
+      ],
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    const activity = view.getByRole('region', { name: '执行过程' })
+
+    expect(activity.getAttribute('data-chat-activity-count')).toBe('4')
+    expect(within(activity).getByRole('button', { name: /上下文注入AGENTS.md/ })).toBeTruthy()
+    expect(within(activity).getAllByRole('button', { name: /^Think/ })).toHaveLength(3)
+    expect(activity.contains(view.getByText('Important intermediate output'))).toBe(false)
+    expect(view.container.querySelectorAll('[data-chat-activity-flow]')).toHaveLength(1)
+
+    fireEvent.click(within(activity).getByRole('button', { name: /Second reasoning detail/ }))
+    expect(within(activity).getByText('Second reasoning detail')).toBeTruthy()
+  })
+
+  it('keeps a process activity viewport pinned to new rows until the reader scrolls away', () => {
+    const h = makeHarness({ nodes: [reasoning(1, 'first'), reasoning(2, 'second'), reasoning(3, 'third')] })
+    const view = render(<h.ChatView {...h.props} />)
+    const activity = view.getByRole('region', { name: '执行过程' })
+    const metrics = installScrollMetrics(activity, 120, 72)
+
+    act(() => {
+      h.set({ nodes: [reasoning(1, 'first'), reasoning(2, 'second'), reasoning(3, 'third'), reasoning(4, 'fourth')] })
+    })
+    expect(activity.scrollTop).toBe(48)
+
+    readerScroll(activity, 8)
+    metrics.setHeight(180)
+    act(() => {
+      h.set({
+        nodes: [
+          reasoning(1, 'first'), reasoning(2, 'second'), reasoning(3, 'third'),
+          reasoning(4, 'fourth'), reasoning(5, 'fifth'),
+        ],
+      })
+    })
+    expect(activity.scrollTop).toBe(8)
   })
 
   it('renders the fixture main line as independently keyed business nodes', () => {

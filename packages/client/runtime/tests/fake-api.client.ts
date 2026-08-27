@@ -6,6 +6,9 @@ import type {
   RpcError, RpcReceipt, RpcRequest, RpcResponse, SessionId, SessionModels, SessionSearchItem, SkillEntry,
   WorkspaceId, WorkspaceView,
 } from '@deepseek-ai/dsh-api-remotes/client'
+import type {
+  CollaborationArtifactRecordView, CollaborationPublicEventView, CollaborationRunView,
+} from '@deepseek-ai/dsh-host-apiproxy/api'
 import { RpcId } from '@deepseek-ai/dsh-client-connection/client'
 import type { SessionRemotes } from '../src/client/sessions/remotes.ts'
 
@@ -173,6 +176,48 @@ export class FakeApiClient implements IApiClient {
     history: (payload: unknown) => this.record('subagent.history', payload, this.onSubagentHistory(payload)),
     prompt: (payload: unknown) => this.record('subagent.prompt', payload, this.onSubagentPrompt(payload)),
     interrupt: (payload: unknown) => this.record('subagent.interrupt', payload, this.onSubagentInterrupt(payload)),
+  }
+
+  onCollaborationCreate: (payload: Parameters<IApiClient['collaboration']['create']>[0]) =>
+  Promise<RpcResponse<CollaborationRunView>> = () => Promise.reject(new Error('collaboration.create is not programmed'))
+  onCollaborationList: (payload: unknown) => Promise<RpcResponse<{ runs: CollaborationRunView[] }>> =
+    () => Promise.resolve(ok({ runs: [] }))
+  onCollaborationGet: (payload: Parameters<IApiClient['collaboration']['get']>[0]) =>
+  Promise<RpcResponse<CollaborationRunView>> = () => Promise.reject(new Error('collaboration.get is not programmed'))
+  onCollaborationReadArtifact: (payload: Parameters<IApiClient['collaboration']['readArtifact']>[0]) =>
+  Promise<RpcResponse<CollaborationArtifactRecordView>> = () =>
+    Promise.reject(new Error('collaboration.readArtifact is not programmed'))
+  onCollaborationEvents: (payload: Parameters<IApiClient['collaboration']['events']>[0]) => Promise<RpcResponse<{
+    events: readonly CollaborationPublicEventView[]
+    hasMore: boolean
+    nextCursor: number
+  }>> = payload => Promise.resolve(ok({
+    events: [],
+    hasMore: false,
+    nextCursor: Math.max(payload.afterCursor ?? -1, 0),
+  }))
+  onCollaborationSend: (payload: Parameters<IApiClient['collaboration']['send']>[0]) =>
+  Promise<RpcResponse<CollaborationPublicEventView>> = () => Promise.reject(new Error('collaboration.send is not programmed'))
+  onCollaborationComplete: (payload: Parameters<IApiClient['collaboration']['complete']>[0]) =>
+  Promise<RpcResponse<CollaborationRunView>> = () => Promise.reject(new Error('collaboration.complete is not programmed'))
+  onCollaborationRetry: (payload: Parameters<IApiClient['collaboration']['retryFormation']>[0]) =>
+  Promise<RpcResponse<CollaborationRunView>> = () => Promise.reject(new Error('collaboration.retryFormation is not programmed'))
+  onCollaborationCancel: (payload: Parameters<IApiClient['collaboration']['cancel']>[0]) =>
+  Promise<RpcResponse<CollaborationRunView>> = () => Promise.reject(new Error('collaboration.cancel is not programmed'))
+
+  readonly collaboration: IApiClient['collaboration'] = {
+    create: payload => this.record('collaboration.create', payload, this.onCollaborationCreate(payload)),
+    list: (payload: unknown) => this.record(
+      'collaboration.list', payload, this.onCollaborationList(payload)),
+    get: payload => this.record('collaboration.get', payload, this.onCollaborationGet(payload)),
+    readArtifact: payload => this.record(
+      'collaboration.readArtifact', payload, this.onCollaborationReadArtifact(payload)),
+    events: payload => this.record('collaboration.events', payload, this.onCollaborationEvents(payload)),
+    send: payload => this.record('collaboration.send', payload, this.onCollaborationSend(payload)),
+    complete: payload => this.record('collaboration.complete', payload, this.onCollaborationComplete(payload)),
+    retryFormation: payload => this.record(
+      'collaboration.retryFormation', payload, this.onCollaborationRetry(payload)),
+    cancel: payload => this.record('collaboration.cancel', payload, this.onCollaborationCancel(payload)),
   }
 
   readonly host: IApiClient['host'] = {

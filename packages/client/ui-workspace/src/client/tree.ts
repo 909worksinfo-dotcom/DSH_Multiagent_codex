@@ -4,7 +4,8 @@
  * remains visible.
  */
 import {
-  indexSubagentDescendants, type PendingInteractionStatus, type SessionId, type SessionListState,
+  indexSubagentDescendants, isCollaborationLeadSessionId,
+  type PendingInteractionStatus, type SessionId, type SessionListState,
   type SessionSearchResultItem, type SessionSummary, type SubagentDescendantSummary,
   type WorkspaceId, type WorkspaceView,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -116,7 +117,8 @@ function byRecency(a: SessionSummary, b: SessionSummary): number {
  * unarchiving restores position.
  */
 function sessionVisible(session: SessionSummary, current: SessionId | undefined, archived: ReadonlySet<SessionId>): boolean {
-  return session.origin !== 'subagent'
+  return !isCollaborationLeadSessionId(session.id)
+    && session.origin !== 'subagent'
     && !archived.has(session.id)
     && (!session.blank || session.id === current)
 }

@@ -70,6 +70,17 @@ import {
   subagentListRequestSchema,
   subagentPromptRequestSchema,
 } from '../api/subagents.schema.ts'
+import {
+  collaborationCancelRequestSchema,
+  collaborationCompleteRequestSchema,
+  collaborationCreateRequestSchema,
+  collaborationEventsRequestSchema,
+  collaborationGetRequestSchema,
+  collaborationReadArtifactRequestSchema,
+  collaborationListRequestSchema,
+  collaborationRetryFormationRequestSchema,
+  collaborationSendRequestSchema,
+} from '../api/collaboration.schema.ts'
 
 /**
  * Unary dispatch table, keyed by (and compiler-locked to) RpcMethodMap: a map row without a
@@ -104,6 +115,15 @@ const UNARY_ROUTES: UnaryRoutes = {
   'subagent.history': { schema: subagentHistoryRequestSchema, invoke: (api, r, signal) => api.subagents.history(r, signal) },
   'subagent.prompt': { schema: subagentPromptRequestSchema, invoke: (api, r, signal) => api.subagents.prompt(r, signal) },
   'subagent.interrupt': { schema: subagentInterruptRequestSchema, invoke: (api, r) => api.subagents.interrupt(r) },
+  'collaboration.create': { schema: collaborationCreateRequestSchema, invoke: (api, r, signal) => api.collaboration.create(r, signal) },
+  'collaboration.list': { schema: collaborationListRequestSchema, invoke: (api, r) => api.collaboration.list(r) },
+  'collaboration.get': { schema: collaborationGetRequestSchema, invoke: (api, r) => api.collaboration.get(r) },
+  'collaboration.readArtifact': { schema: collaborationReadArtifactRequestSchema, invoke: (api, r) => api.collaboration.readArtifact(r) },
+  'collaboration.events': { schema: collaborationEventsRequestSchema, invoke: (api, r) => api.collaboration.events(r) },
+  'collaboration.send': { schema: collaborationSendRequestSchema, invoke: (api, r) => api.collaboration.send(r) },
+  'collaboration.complete': { schema: collaborationCompleteRequestSchema, invoke: (api, r) => api.collaboration.complete(r) },
+  'collaboration.retryFormation': { schema: collaborationRetryFormationRequestSchema, invoke: (api, r, signal) => api.collaboration.retryFormation(r, signal) },
+  'collaboration.cancel': { schema: collaborationCancelRequestSchema, invoke: (api, r) => api.collaboration.cancel(r) },
   'host.describe': { schema: hostDescribeRequestSchema, invoke: (api, r) => api.host.describe(r) },
   'host.pickDirectory': { schema: hostPickDirectoryRequestSchema, invoke: (api, r, signal) => api.host.pickDirectory(r, signal) },
   'host.listDirectory': { schema: hostListDirectoryRequestSchema, invoke: (api, r, signal) => api.host.listDirectory(r, signal) },

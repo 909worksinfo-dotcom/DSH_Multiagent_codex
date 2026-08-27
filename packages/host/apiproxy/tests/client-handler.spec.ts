@@ -7,10 +7,118 @@
 
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionId } from '@deepseek-ai/dsh-session'
-import type { ApiProxy, GoalRef, HostFrame, MuxFrame, RpcMessage, RpcRequest, RpcResponse } from '@deepseek-ai/dsh-host-apiproxy'
+import type {
+  ApiProxy, CollaborationRunView, GoalRef, HostFrame, MuxFrame, RpcMessage, RpcRequest, RpcResponse,
+} from '@deepseek-ai/dsh-host-apiproxy'
 import { InProcessApiClient, RpcId, toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
+import { collaborationRunValueSchema } from '../src/api/collaboration.schema.ts'
 
 const sid = (id: string): SessionId => id as SessionId
+
+function collaborationRun(): CollaborationRunView {
+  const workstream = {
+    id: 'ws-1',
+    subject: '界定用户问题',
+    description: '整理目标与验收标准',
+    blockedBy: [],
+    requiredCapabilities: ['product-research'],
+    resourceScopes: ['local'],
+  }
+  return {
+    id: sid('lead-1'),
+    requestId: 'request-1',
+    title: '研究协作入口',
+    objective: '给出可验证的产品建议',
+    language: 'zh',
+    createdAt: 1,
+    status: 'running',
+    phase: 'active',
+    cursor: 10,
+    profile: {
+      domain: 'research_analysis',
+      objective: '给出可验证的产品建议',
+      successCriteria: ['结论可追溯'],
+      workstreams: [workstream],
+      riskSignals: [],
+      complexity: 'simple',
+      plannedExperts: 1,
+      metrics: {
+        workstreamCount: 1,
+        dependencyCount: 0,
+        independentWorkstreams: 1,
+        longestDependencyPath: 1,
+        capabilityCount: 1,
+        riskSignalCount: 0,
+        decomposable: false,
+        toolDensity: 'low',
+        risk: 'low',
+      },
+    },
+    charter: {
+      objective: '给出可验证的产品建议',
+      successCriteria: ['结论可追溯'],
+      topology: 'producer_reviewer',
+      taskDag: [workstream],
+      communication: { maxChallengeRounds: 1, maxMessagesPerExpert: 4 },
+      qualityChecks: ['证据与结论一致'],
+      budgets: [{ slotId: 'slot-1', maxTurns: 8, maxTokens: 8_000, timeoutMs: 60_000 }],
+      termination: {
+        success: 'all_tasks_completed_and_reviewed',
+        formationFailure: 'fail_closed',
+      },
+    },
+    lead: { sessionId: sid('lead-1'), name: 'lead', role: 'Lead Agent' },
+    experts: [{
+      id: 'expert-1',
+      sessionId: sid('expert-session-1'),
+      name: '调研分析专家',
+      role: 'Research Analyst',
+      phase: 'active',
+      binding: {
+        blueprint: { id: 'research-analyst', revision: 1 },
+        preset: { id: 'standard', label: '标准专家' },
+        skills: [{ id: 'collaboration-research-analysis', label: '调研分析' }],
+        marketplaceSkills: [],
+        plugins: [{ id: 'web-search', label: '网络搜索' }],
+      },
+    }],
+    expertCounts: { planned: 1, provisioning: 0, active: 1, failed: 0, attempts: 1, availableSlots: 7 },
+    tasks: [{
+      id: 'task-1',
+      revision: 1,
+      subject: '界定用户问题',
+      description: '整理目标与验收标准',
+      status: 'pending',
+      owner: null,
+      blockedBy: [],
+      resourceScopes: ['local'],
+      ready: true,
+      resourceConflicts: [],
+    }],
+    artifacts: [],
+    decisions: [],
+    qualityGates: [],
+    controller: {
+      health: 'healthy', lastProgressAt: 1, stalledTaskIds: [], duplicateWorkCount: 0,
+      qualityFailureCount: 0, recommendedActions: [], actionsTaken: [],
+    },
+    protocol: {
+      mode: 'enforced',
+      topology: 'producer_reviewer',
+      limits: { maxChallengeRounds: 1, maxMessagesPerExpert: 4 },
+      members: [{
+        slotId: 'slot-1', memberId: 'expert-1', name: '调研分析专家', phase: 'active',
+        permissions: { challenge: true, review: true, requestHelp: true },
+        allowedTargets: ['lead'], usedMessages: 0, remainingMessages: 4,
+      }],
+      challenges: [],
+    },
+    progress: {
+      total: 1, ready: 1, inProgress: 0, completed: 0, blocked: 0, messageCount: 0,
+      artifactCount: 0, decisionCount: 0, qualityGatePending: 0, qualityGatePassed: 0, qualityGateFailed: 0,
+    },
+  }
+}
 
 function ok<T>(request: RpcRequest<unknown>, value: T): Promise<RpcResponse<T>> {
   return Promise.resolve({ rpcId: request.rpcId, result: { ok: true, value } })
@@ -20,6 +128,7 @@ function ok<T>(request: RpcRequest<unknown>, value: T): Promise<RpcResponse<T>> 
 function scriptedApi(overrides: {
   sessions?: Partial<ApiProxy['sessions']>
   subagents?: Partial<ApiProxy['subagents']>
+  collaboration?: Partial<ApiProxy['collaboration']>
   host?: Partial<ApiProxy['host']>
   skills?: Partial<ApiProxy['skills']>
   agentPresets?: Partial<ApiProxy['agentPresets']>
@@ -69,6 +178,18 @@ function scriptedApi(overrides: {
       prompt: r => ok(r, { messageId: 'message-1' as never }),
       interrupt: r => ok(r, { accepted: true as const }),
       ...overrides.subagents,
+    },
+    collaboration: {
+      create: err,
+      list: err,
+      get: err,
+      readArtifact: err,
+      events: err,
+      send: err,
+      complete: err,
+      retryFormation: err,
+      cancel: err,
+      ...overrides.collaboration,
     },
     host: {
       describe: r => ok(r, {
@@ -164,6 +285,152 @@ describe('unary round trip', () => {
     expect(seen?.rpcId).toBeTruthy()
     expect(response.rpcId).toBe(seen?.rpcId)
     expect(response.result).toEqual({ ok: true, value: { items: [{ sessionId: 's1', updatedAt: 7, running: false, blank: false }] } })
+  })
+
+  it('round-trips a collaboration run while stripping private composition metadata', async () => {
+    let seen: RpcRequest<unknown> | undefined
+    const run = collaborationRun()
+    const unsafeRun = {
+      ...run,
+      internalPrompt: 'must never cross the browser boundary',
+      experts: run.experts.map(expert => ({
+        ...expert,
+        binding: {
+          ...expert.binding,
+          skills: expert.binding.skills.map(skill => ({ ...skill, sourcePath: '/private/skill/SKILL.md' })),
+        },
+      })),
+    }
+    const api = scriptedApi({
+      collaboration: {
+        create: (request) => {
+          seen = request
+          return ok(request, unsafeRun)
+        },
+      },
+    })
+
+    const response = await client(api).collaboration.create({
+      leadSessionId: sid('lead-1'),
+      requestId: 'request-1',
+      title: '  研究协作入口  ',
+      objective: '  给出可验证的产品建议  ',
+      language: 'zh',
+      domain: 'research_analysis',
+    })
+
+    expect(seen?.payload).toMatchObject({
+      title: '研究协作入口',
+      objective: '给出可验证的产品建议',
+    })
+    expect(response.result.ok).toBe(true)
+    if (!response.result.ok) throw new Error('expected collaboration create to succeed')
+    expect(response.result.value).not.toHaveProperty('internalPrompt')
+    expect(response.result.value.experts[0]?.binding.skills[0]).toEqual({
+      id: 'collaboration-research-analysis',
+      label: '调研分析',
+    })
+  })
+
+  it('rejects impossible legacy and enforced protocol discriminants at the Host response boundary', () => {
+    const run = collaborationRun()
+    expect(collaborationRunValueSchema.parse(run)).toMatchObject({ protocol: { mode: 'enforced' } })
+    expect(() => collaborationRunValueSchema.parse({
+      ...run,
+      protocol: { mode: 'legacy', topology: 'parallel', limits: null, members: [], challenges: [] },
+    })).toThrow()
+    expect(() => collaborationRunValueSchema.parse({
+      ...run,
+      protocol: { mode: 'enforced', topology: null, limits: null, members: [], challenges: [] },
+    })).toThrow()
+  })
+
+  it('rejects a blank collaboration objective before invoking orchestration', async () => {
+    const create = vi.fn<ApiProxy['collaboration']['create']>()
+    const api = scriptedApi({ collaboration: { create } })
+
+    const response = await client(api).collaboration.create({
+      leadSessionId: sid('lead-1'),
+      requestId: 'request-1',
+      title: '研究协作入口',
+      objective: '   ',
+      language: 'zh',
+    })
+
+    expect(create).not.toHaveBeenCalled()
+    expect(response.result).toMatchObject({ ok: false, error: { code: 'bad-request' } })
+  })
+
+  it('pages typed public collaboration events and rejects private send fields at the wire boundary', async () => {
+    const event = {
+      id: 'message-1',
+      eventId: 'event-1',
+      cursor: 7,
+      threadId: 'main',
+      kind: 'challenge' as const,
+      author: { role: 'lead' as const, sessionId: sid('lead-1'), name: 'lead' as const },
+      targets: [],
+      references: { taskId: 'task-1', challengeId: 'challenge-1' },
+      content: 'Question the proposal with public evidence',
+      createdAt: 10,
+      visibility: 'public' as const,
+    }
+    let seenEvents: RpcRequest<unknown> | undefined
+    const send = vi.fn<ApiProxy['collaboration']['send']>(request => ok(request, event))
+    const api = scriptedApi({
+      collaboration: {
+        events: (request) => {
+          seenEvents = request
+          return ok(request, { events: [event], hasMore: false, nextCursor: 10 })
+        },
+        send,
+      },
+    })
+    const c = client(api)
+    const page = await c.collaboration.events({ runId: sid('lead-1'), afterCursor: 4, limit: 1 })
+    expect(seenEvents?.payload).toEqual({ runId: 'lead-1', afterCursor: 4, limit: 1 })
+    expect(page.result).toMatchObject({
+      ok: true,
+      value: { events: [{ cursor: 7, kind: 'challenge', visibility: 'public' }], nextCursor: 10 },
+    })
+
+    const rejected = await c.collaboration.send({
+      runId: sid('lead-1'),
+      kind: 'proposal',
+      threadId: 'main',
+      content: 'Public conclusion',
+      privateReasoning: 'must not cross the Host boundary',
+    } as Parameters<typeof c.collaboration.send>[0] & { privateReasoning: string })
+    expect(rejected.result).toMatchObject({ ok: false, error: { code: 'bad-request' } })
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('returns artifact bodies only from readArtifact and rejects unknown private request fields', async () => {
+    const readArtifact = vi.fn<ApiProxy['collaboration']['readArtifact']>(request => ok(request, {
+      id: 'artifact-1',
+      version: 2,
+      kind: 'document',
+      title: 'Restricted artifact',
+      status: 'accepted',
+      author: { role: 'lead', sessionId: sid('lead-1'), name: 'lead' },
+      taskIds: ['task-1'],
+      mediaType: 'text/markdown',
+      updatedAt: 10,
+      body: 'complete restricted body',
+    }))
+    const c = client(scriptedApi({ collaboration: { readArtifact } }))
+    const accepted = await c.collaboration.readArtifact({ runId: sid('lead-1'), artifactId: 'artifact-1' })
+    expect(accepted.result).toMatchObject({
+      ok: true,
+      value: { id: 'artifact-1', version: 2, body: 'complete restricted body' },
+    })
+    expect(readArtifact).toHaveBeenCalledOnce()
+
+    const rejected = await c.collaboration.readArtifact({
+      runId: sid('lead-1'), artifactId: 'artifact-1', privateReasoning: true,
+    } as never)
+    expect(rejected.result).toMatchObject({ ok: false, error: { code: 'bad-request' } })
+    expect(readArtifact).toHaveBeenCalledOnce()
   })
 
   it('round-trips a trimmed session search query and its bounded result metadata', async () => {

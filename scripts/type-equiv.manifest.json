@@ -2,6 +2,11 @@
   "comment": "Maps each primary ` ```ts type-equiv ` or ` ```ts public-api ` block (by doc + declared symbol + projection) to the source declaration and original JSDoc it must match. Paired `.zh.md` blocks are byte-identical derivatives checked through their unsuffixed sibling and have no duplicate entry. Omit projection for the complete declaration; use public-api with a ` ```ts public-api ` block for a body-stripped public class declaration. verify-type-equiv.ts enforces a 1:1 correspondence between primary blocks and entries. Add an entry when you add a primary source-equivalence block; remove it when you remove the block.",
   "entries": [
     {
+      "doc": "docs/subsystems/skills.md",
+      "symbol": "SkillMarketplaceSearchResult",
+      "source": "packages/skill/skill-marketplace/src/index.ts"
+    },
+    {
       "doc": "docs/subsystems/core.md",
       "symbol": "Branded",
       "source": "packages/util/brand/src/index.ts"
@@ -304,22 +309,22 @@
     {
       "doc": "docs/subsystems/agent-team.md",
       "symbol": "TeamMemberSnapshot",
-      "source": "packages/experimental/agent-team/src/types.ts"
+      "source": "packages/collaboration/agent-team/src/types.ts"
     },
     {
       "doc": "docs/subsystems/agent-team.md",
-      "symbol": "TeamMessageSnapshot",
-      "source": "packages/experimental/agent-team/src/types.ts"
+      "symbol": "TeamRunSnapshot",
+      "source": "packages/collaboration/agent-team/src/types.ts"
     },
     {
       "doc": "docs/subsystems/agent-team.md",
-      "symbol": "TeamMessageSource",
-      "source": "packages/experimental/agent-team/src/types.ts"
+      "symbol": "PublicCollaborationMessage",
+      "source": "packages/collaboration/agent-team/src/types.ts"
     },
     {
       "doc": "docs/subsystems/agent-team.md",
       "symbol": "TeamTaskSnapshot",
-      "source": "packages/experimental/agent-team/src/types.ts"
+      "source": "packages/collaboration/agent-team/src/types.ts"
     },
     {
       "doc": "docs/subsystems/commands.md",

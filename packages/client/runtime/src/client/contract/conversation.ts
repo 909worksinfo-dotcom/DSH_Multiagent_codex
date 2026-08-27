@@ -127,6 +127,8 @@ export interface ChatConversationViewNode extends ConversationViewNode {
   readonly anchorSeq: number
   readonly location: ConversationLocation
   readonly visibility: 'visible' | 'hidden'
+  /** Opts a low-priority process row into the Chat view's bounded activity flow. */
+  readonly flow?: 'activity'
 }
 
 /** Immutable public view of an assembled business Context. */

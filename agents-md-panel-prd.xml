@@ -1,0 +1,336 @@
+<title>[PRD] agents.md 项目简报 Panel 展示与 Composer 修改闭环</title>
+
+<blockquote>
+<p><b>关联 Coze 项目：</b><a href="https://www.coze.cn/project/7667502284032622900">项目 7667502284032622900</a></p>
+<p><b>原始项目简报 PRD：</b><a href="https://bytedance.larkoffice.com/docx/EnDkdsMOeoHj2YxddM8cBSMEnbh">[PRD] 项目简报 agents.md 协作与更新体验</a></p>
+<p><b>Composer 参考：</b><a href="https://bytedance.larkoffice.com/wiki/I0EkwFoKKineMSkJuYec4UePnfc">三方 Agent × Composer 需求汇总</a>、<a href="https://bytedance.larkoffice.com/wiki/Omx2w7hdBi0Ff1kMwQFcUcihnwd">Coze 3.5 Composer 工作组件清单</a>、<a href="https://bytedance.larkoffice.com/wiki/OhZYw0g6gibwx6kfdbpc7lhenDd">Composer 卡片需求梳理</a></p>
+<p><b>Panel 参考：</b><a href="https://bytedance.larkoffice.com/docx/Y0sPdVaNaouIguxZYtCcubmanzh">【PC】Plugin Panel 容器布局抽象手册</a></p>
+<p><b>涉及端：</b>Web、Server、App；桌面端跟随 Web 容器能力待确认</p>
+<p><b>需求状态：</b><code>draft</code>；设计稿、排期、责任人和指标目标值待评审确认</p>
+</blockquote>
+
+<table>
+<colgroup><col width="130"/><col width="170"/><col width="440"/></colgroup>
+<thead><tr><th background-color="light-gray">修改日期</th><th background-color="light-gray">修改人</th><th background-color="light-gray">修改记录</th></tr></thead>
+<tbody><tr><td>2026-08-17</td><td>产品需求草稿 / AI</td><td>在原项目简报能力基础上，补充 agents.md Panel 化展示、结构化选区引用、Composer 修改闭环及生产化验收口径。</td></tr></tbody>
+</table>
+
+<h2>需求背景</h2>
+<p>当前 <code>agents.md</code> 仍以文件预览方式出现在 Coze 项目右边栏。用户可以阅读文件，但很难围绕具体章节、段落、列表项、表格行或链接发起修改；Panel 与 Composer 之间也缺少稳定、可见、可回溯的上下文传递方式。结果是项目简报虽已进入项目对话，却仍像一个独立文件预览器，没有成为可由 Agent 持续维护的项目协作界面。</p>
+<p>本需求将项目简报从“文件预览”升级为统一 Panel Shell 下的工作型容器。Panel 负责结构化阅读、对象选择、历史与状态展示；Composer 负责承载自然语言意图、Agent 选择、引用回显和发送；A2UI 建议卡片负责管理员确认与写入结果。三者形成“查看—选择—发起—确认—写入—回看”的完整闭环。</p>
+
+<h3>要解决的问题</h3>
+<table>
+<colgroup><col width="210"/><col width="250"/><col width="280"/></colgroup>
+<thead><tr><th background-color="light-gray">问题</th><th background-color="light-gray">当前影响</th><th background-color="light-gray">本期目标</th></tr></thead>
+<tbody>
+<tr><td>agents.md 以通用文件预览展示</td><td>缺少项目简报专属信息架构、状态、历史和操作入口，阅读与维护割裂。</td><td>使用统一 Panel Shell 和项目简报专属工作区展示空态、有内容态、历史、说明、更新状态与引用对象。</td></tr>
+<tr><td>只能发起全局、模糊的更新请求</td><td>用户需要在自然语言里重新描述目标位置，Agent 容易修改过多或定位错误。</td><td>支持全局更新及章节、段落、列表项、表格行、链接等结构化选区的精确引用和修改。</td></tr>
+<tr><td>Panel 与 Composer 上下文不可见</td><td>用户不知道发送时带入了什么对象，也难以删除、补充或组合多个引用。</td><td>Panel 引用进入 Composer 附件区或输入区，以可见 Chip 回显，可删除、可组合、发送后可追溯。</td></tr>
+<tr><td>原项目简报能力与新 Panel 规范可能割裂</td><td>改造时容易遗漏 App、A2UI、权限、历史、onepage/引用文件等已有设计。</td><td>保留原 PRD 全部产品能力，仅替换展示容器并扩展 Panel × Composer 的交互。</td></tr>
+<tr><td>原型能力与生产链路边界不清</td><td>文件读取、写入、版本冲突、权限和刷新恢复可能只在前端模拟。</td><td>明确真实读取、结构化定位、服务端鉴权、原子写入、历史记录、失败恢复与并发冲突要求。</td></tr>
+</tbody>
+</table>
+
+<h3>如何衡量收益</h3>
+<table>
+<colgroup><col width="230"/><col width="380"/><col width="90"/></colgroup>
+<thead><tr><th background-color="light-gray">场景</th><th background-color="light-gray">收益</th><th background-color="light-gray">优先级</th></tr></thead>
+<tbody>
+<tr><td>项目成员快速理解项目</td><td>在对话内打开 Panel 即可阅读结构化项目简报，降低查找历史消息和重复解释成本。</td><td>P0</td></tr>
+<tr><td>精确修改局部内容</td><td>选择具体结构对象后交给 Agent，减少位置歧义和非预期全局改写。</td><td>P0</td></tr>
+<tr><td>管理员把关写入</td><td>所有真实覆盖仍由管理员通过 A2UI 卡片确认，降低 AI 或协作者误写风险。</td><td>P0</td></tr>
+<tr><td>协作者参与维护</td><td>协作者可阅读、选择和发起建议，但不能绕过管理员写入。</td><td>P1</td></tr>
+<tr><td>修改过程可追溯</td><td>引用对象、建议摘要、结果和成功历史形成可审计链路。</td><td>P1</td></tr>
+</tbody>
+</table>
+
+<h3>商业化逻辑</h3>
+<p>本需求定位为 Coze Space 项目协作体验增强，本期不单独作为付费能力。若后续将自动维护、多文件简报或高级历史审计纳入套餐权益，应由商业化负责人确认计费口径；本 PRD 不预设结论。</p>
+
+<h2>产品方案</h2>
+
+<h3>总体信息架构与交互闭环</h3>
+<p>agents.md Panel 属于工作型容器，核心任务是持续阅读、选择、审阅和发起维护；内容阅读使用 Preview Workspace 语义，具体结构对象使用 Object Inspector 语义。统一外壳包含插件名、当前项目、文档状态、历史、帮助和关闭；对象级操作只在选中内容后出现，不堆叠在顶部。</p>
+<ol>
+<li seq="auto">用户从项目对话顶部导航或右侧 Plugin 工具栏打开“项目简报”。</li>
+<li seq="auto">Panel 读取当前 <code>agents.md</code> 及其显式引用文件，展示空态或结构化正文。</li>
+<li seq="auto">用户可选择“全局更新”，或选中章节、段落、列表项、表格行、链接等对象。</li>
+<li seq="auto">点击“让 Agent 修改”后，系统将引用对象写入 Composer 附件区/输入区，并打开 @Agent 选择；不自动发送。</li>
+<li seq="auto">用户补充自然语言并发送，Agent 基于引用快照、当前文件版本和项目上下文生成建议。</li>
+<li seq="auto">A2UI 卡片向发起者展示建议；管理员可同意、忽略或重试，协作者只读并等待管理员处理。</li>
+<li seq="auto">同意后 Agent 二次检查版本、权限和上下文；成功写入后刷新 Panel 并记录修改历史。</li>
+</ol>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+<p><b>黄色单元格说明：</b>下文所有淡黄色单元格均为本次 Panel 改造新增或增强的能力，并标注“Panel功能增强”或“Panel新功能”。未标黄内容为原项目简报 PRD 必须完整保留的能力。</p>
+</callout>
+
+<h3>功能一：项目对话内打开并查看项目简报 Panel</h3>
+<table>
+<colgroup><col width="170"/><col width="200"/><col width="210"/><col width="210"/></colgroup>
+<thead><tr><th background-color="light-gray">用户场景 / 用户操作</th><th background-color="light-gray">系统响应</th><th background-color="light-gray">关键状态 / 文案 / 兜底</th><th background-color="light-gray">评审口径 / 验收点</th></tr></thead>
+<tbody>
+<tr><td>用户进入普通项目对话页。</td><td>顶部导航或右侧 Plugin 工具栏展示“项目简报”入口；视频项目是否开放沿用原范围控制。</td><td>Tooltip 为“项目简报”；原型可显示“项目简报（演示）”。</td><td>入口不影响设置、邮件、文件等既有按钮；不支持的项目不展示入口。</td></tr>
+<tr><td background-color="light-yellow">用户点击入口。（Panel功能增强）</td><td background-color="light-yellow">在统一 Panel Shell 中打开项目简报工作区，Header 展示“项目简报”、项目名、同步状态、历史、帮助和关闭。</td><td background-color="light-yellow">加载中显示骨架；读取失败显示“项目简报加载失败”及“重试”；关闭仅收起 Panel，不清空 Composer 草稿。</td><td background-color="light-yellow">不再进入通用文件预览；Panel 宽度、关闭、返回和状态遵循统一容器规范。</td></tr>
+<tr><td>当前没有 agents.md。</td><td>展示空态、功能说明和两种使用方法，不提供直接编辑器。</td><td>说明 Agent 可主动建议，用户也可通过“创建项目简报”发起请求。</td><td>空态不误导为已生成；人类不能绕过 Agent 和审核直接写入。</td></tr>
+<tr><td>当前已有 agents.md。</td><td>展示说明 Banner、最近更新者、更新时间、正文和“帮我更新”。</td><td>Banner：“Agent 会自动更新，你也可以主动发起更新请求”。</td><td>Markdown 标题、引用、段落、列表、表格、代码和链接层级清晰；正文为只读阅读态。</td></tr>
+<tr><td background-color="light-yellow">用户浏览长文档。（Panel功能增强）</td><td background-color="light-yellow">Panel 提供目录导航、当前章节定位和返回顶部；目录仅展示有效标题层级。</td><td background-color="light-yellow">滚动时高亮当前章节；目录折叠状态仅影响本地展示。</td><td background-color="light-yellow">正文占主要空间，不因工具栏产生大块空白；定位后焦点可见。</td></tr>
+<tr><td>用户点击帮助图标。</td><td>打开轻量说明 Popover，包含“什么是项目简报”和两种使用方法。</td><td>Popover 不遮挡关闭按钮，不破坏正文阅读。</td><td>帮助内容与 Web/App 规则一致。</td></tr>
+<tr><td>用户点击历史图标。</td><td>展示成功覆盖记录：变更对象、摘要、Agent、发起者、确认者和时间。</td><td>无历史显示“暂无修改记录”。失败、忽略、失效不进入成功记录。</td><td>历史只记录项目简报范围内真实成功写入。</td></tr>
+<tr><td background-color="light-yellow">用户点击下载。（Panel功能增强）</td><td background-color="light-yellow">下载当前最新版本的原始 <code>agents.md</code>；引用型简报默认只下载入口文件。</td><td background-color="light-yellow">下载前使用当前服务端版本；失败提示并允许重试。</td><td background-color="light-yellow">下载文件可被标准 Markdown 工具打开，内容与 Panel 当前版本一致。</td></tr>
+</tbody>
+</table>
+<p><b>本期不做：</b>Panel 内直接进入所见即所得编辑器、无审核覆盖、历史版本一键回退、默认扫描整个工作目录。视频项目、桌面端独立适配和多文件打包下载是否纳入本期，待评审确认。</p>
+
+<h3>功能二：全局发起创建或更新请求</h3>
+<table>
+<colgroup><col width="170"/><col width="200"/><col width="210"/><col width="210"/></colgroup>
+<thead><tr><th background-color="light-gray">用户场景 / 用户操作</th><th background-color="light-gray">系统响应</th><th background-color="light-gray">关键状态 / 文案 / 兜底</th><th background-color="light-gray">评审口径 / 验收点</th></tr></thead>
+<tbody>
+<tr><td>管理员点击“帮我更新”或空态“创建项目简报”。</td><td>清空当前输入草稿前必须确认草稿处理策略；默认保留已有草稿并在其后插入请求。回填更新意图并打开 @Agent 面板。</td><td>不自动指定 Agent，不自动发送；用户可编辑、取消或补充要求。</td><td>Composer 出现更新请求和项目简报全局引用，@Agent 面板打开。</td></tr>
+<tr><td>协作者点击同一入口。</td><td>同样回填请求并打开 @Agent 面板，同时显示 Info Toast。</td><td>“发送更新请求后，需管理员批准，AI 才可写入。”</td><td>协作者能发起但不能获得确认写入权限。</td></tr>
+<tr><td>用户发送更新请求。</td><td>对话追加用户消息；Agent 读取当前项目简报和项目上下文，随后产生待确认建议卡片。</td><td>加载文案：“请稍等，正在根据上文为你创建/更新项目简报”。</td><td>请求、Agent 响应和 A2UI 卡片均在当前对话完成。</td></tr>
+<tr><td>用户取消或删除引用 Chip。</td><td>不发送请求，不改变项目简报；Panel 保持当前状态。</td><td>删除全局引用后，普通自然语言仍可发送，但不进入项目简报专属写入链路，除非 Agent 明确识别并再次确认。</td><td>取消不产生空消息、建议卡片或历史记录。</td></tr>
+<tr><td>用户未选择 Agent。</td><td>只有明确 @Agent 才触发项目简报写入链路。</td><td>不 @ 不生效；多 Agent 暂按 Composer 现有并行扇出处理，后续由 Router 收敛。</td><td>点击入口只打开选择面板，不代替用户选择。</td></tr>
+</tbody>
+</table>
+
+<h3>功能三：结构化选区与精确引用</h3>
+<table>
+<colgroup><col width="150"/><col width="190"/><col width="220"/><col width="230"/></colgroup>
+<thead><tr><th background-color="light-gray">引用粒度</th><th background-color="light-gray">Panel 操作</th><th background-color="light-gray">Composer 回显</th><th background-color="light-gray">定位与验收</th></tr></thead>
+<tbody>
+<tr><td background-color="light-yellow">全文（Panel功能增强）</td><td background-color="light-yellow">点击“帮我更新”或正文空白处的全局操作。</td><td background-color="light-yellow">Chip 显示“项目简报 · 全文”。</td><td background-color="light-yellow">携带文档 ID、版本和全文范围；用于整体整理或创建。</td></tr>
+<tr><td background-color="light-yellow">章节（Panel新功能）</td><td background-color="light-yellow">悬停标题或在目录中选择章节，点击“让 Agent 修改”。</td><td background-color="light-yellow">Chip 显示“项目简报 · {章节标题}”。</td><td background-color="light-yellow">范围包含标题至下一个同级/更高级标题前；发送时保留结构定位和文本快照。</td></tr>
+<tr><td background-color="light-yellow">段落（Panel新功能）</td><td background-color="light-yellow">点击段落选择柄或文本选区动作。</td><td background-color="light-yellow">Chip 显示“项目简报 · 段落：{前 20 字}”。</td><td background-color="light-yellow">使用稳定块 ID；若版本变化导致块不存在，写入前进入失效或澄清。</td></tr>
+<tr><td background-color="light-yellow">列表项（Panel新功能）</td><td background-color="light-yellow">选择单个或连续列表项。</td><td background-color="light-yellow">Chip 显示“项目简报 · 列表项 × N”。</td><td background-color="light-yellow">保留列表层级、顺序和父级范围；不得误改相邻未选项。</td></tr>
+<tr><td background-color="light-yellow">表格行（Panel新功能）</td><td background-color="light-yellow">选择表格行；表头作为上下文自动携带但默认不可单独覆盖。</td><td background-color="light-yellow">Chip 显示“项目简报 · {表名/最近标题} · 第 N 行”。</td><td background-color="light-yellow">引用含表头、目标行和表格块 ID；写入只修改建议明确列出的单元格或整行。</td></tr>
+<tr><td background-color="light-yellow">链接（Panel新功能）</td><td background-color="light-yellow">选中链接后选择“让 Agent 处理”，或正常点击打开。</td><td background-color="light-yellow">Chip 显示“项目简报 · 链接：{链接标题}”。</td><td background-color="light-yellow">引用同时携带链接文本、URL、所在块和版本；打开链接与引用动作不冲突。</td></tr>
+<tr><td background-color="light-yellow">多选混合（Panel新功能）</td><td background-color="light-yellow">使用多选模式组合多个同文档对象。</td><td background-color="light-yellow">附件区显示一个聚合 Chip“项目简报 · 已选 N 项”，Hover/展开查看明细。</td><td background-color="light-yellow">限制最大数量和总文本长度待技术评估；超限时阻止继续选择并说明原因。</td></tr>
+</tbody>
+</table>
+<p>选区引用是结构化快照，不等同于复制纯文本。最小数据包含项目 ID、目标文件、文档版本、块 ID/结构路径、对象类型、可见摘要和引用创建时间。发送和写入阶段均需检查引用是否仍指向当前可访问对象。</p>
+
+<h3>功能四：Panel 与 Composer 互通</h3>
+<table>
+<colgroup><col width="170"/><col width="200"/><col width="210"/><col width="210"/></colgroup>
+<thead><tr><th background-color="light-gray">用户场景 / 用户操作</th><th background-color="light-gray">系统响应</th><th background-color="light-gray">关键状态 / 文案 / 兜底</th><th background-color="light-gray">评审口径 / 验收点</th></tr></thead>
+<tbody>
+<tr><td background-color="light-yellow">从 Panel 点击“让 Agent 修改”。（Panel新功能）</td><td background-color="light-yellow">引用进入 Composer 附件区；光标处插入建议 Prompt，并打开 @Agent 选择。</td><td background-color="light-yellow">Chip 可删除；Prompt 可编辑；不自动发送。</td><td background-color="light-yellow">遵循 Composer 已有 Panel/comment 引用和附件区对象规范，不创建新的不可组合输入模型。</td></tr>
+<tr><td background-color="light-yellow">用户在 Composer 中 @ 项目简报。（Panel功能增强）</td><td background-color="light-yellow">@ 一级候选展示“项目简报”；选择后可进入二级候选：全文、最近引用、章节。</td><td background-color="light-yellow">多 Agent 场景先选择执行 Agent，再选择项目简报对象；单 Agent 直接选择对象。</td><td background-color="light-yellow">与现有 Agent / Plugin / Attached Files 两级选择规则一致。</td></tr>
+<tr><td background-color="light-yellow">Composer 中存在多个引用。（Panel新功能）</td><td background-color="light-yellow">自然语言、Agent、Plugin、文件、Panel、注释和项目简报引用可混排。</td><td background-color="light-yellow">同一对象重复引用时去重并提示；不同版本引用不得静默合并。</td><td background-color="light-yellow">删除一个 Chip 不影响其他引用和文本。</td></tr>
+<tr><td background-color="light-yellow">用户发送后查看消息。（Panel功能增强）</td><td background-color="light-yellow">消息中回显引用摘要；点击摘要重新打开 Panel 并定位到对应对象。</td><td background-color="light-yellow">对象已删除或无权限时展示不可用状态，不回退到错误位置。</td><td background-color="light-yellow">引用可追溯，发送后的消息不暴露用户无权访问的正文。</td></tr>
+<tr><td background-color="light-yellow">用户在 Panel 选择对象后切换项目/会话。（Panel新功能）</td><td background-color="light-yellow">Composer 草稿和引用按会话隔离；跨项目发送前阻止并提示重新引用。</td><td background-color="light-yellow">“该项目简报引用不属于当前项目，请删除或返回原项目发送。”</td><td background-color="light-yellow">不得把 A 项目的私有简报引用带入 B 项目。</td></tr>
+<tr><td>Ask for User 或授权卡片出现。</td><td>沿用 Composer 阻断层规则，暂停普通输入；Panel 可保持打开但关键操作禁用。</td><td>卡片只触达任务发起者；完成选择后恢复 Composer。</td><td>项目简报链路不改变 Composer 卡片优先级、队列和打断机制。</td></tr>
+</tbody>
+</table>
+
+<h3>功能五：A2UI 更新建议卡片状态机</h3>
+<table>
+<colgroup><col width="100"/><col width="170"/><col width="170"/><col width="170"/><col width="190"/></colgroup>
+<thead><tr><th background-color="light-gray">状态</th><th background-color="light-gray">触发条件</th><th background-color="light-gray">管理员视角</th><th background-color="light-gray">协作者视角</th><th background-color="light-gray">兜底 / 验收点</th></tr></thead>
+<tbody>
+<tr><td>待确认</td><td>Agent 生成创建或更新建议。</td><td>展示影响对象、前后摘要、依据，提供“同意”“忽略”。</td><td>只读展示“需要项目管理员进行操作”。</td><td>卡片明确全文或具体引用对象；协作者无写入按钮。</td></tr>
+<tr><td>写入中</td><td>管理员点击“同意”或“重试”。</td><td>按钮禁用，显示旋转加载与“更新中”。</td><td>展示等待状态。</td><td>刷新后可恢复；不得用文本字符模拟 Loading。</td></tr>
+<tr><td>写入成功</td><td>真实写入和历史记录完成。</td><td>展示成功，提供“查看项目简报”。</td><td>同样可查看成功结果。</td><td>点击后打开 Panel 并定位到变更对象；Panel 刷新到新版本。</td></tr>
+<tr><td>已忽略</td><td>管理员点击“忽略”。</td><td>展示已忽略，无继续写入动作。</td><td>只读查看结果。</td><td>不修改文件，不进入成功历史。</td></tr>
+<tr><td>更新失败</td><td>生成或写入失败，原建议仍可重试。</td><td>展示失败原因和“重试”。</td><td>只读说明，无关键操作。</td><td>失败不覆盖已有内容；重试回到写入中。</td></tr>
+<tr><td>已失效</td><td>二次检查发现版本、上下文、权限或目标对象变化，原建议不再适合。</td><td>不提供直接重试；可查看原因，新建议另发新卡。</td><td>只读失效结果。</td><td>旧卡不写入、不进历史；信息不足时 Agent 发起澄清。</td></tr>
+<tr><td background-color="light-yellow">部分对象失效（Panel新功能）</td><td background-color="light-yellow">多选引用中仅部分块被删除或改变。</td><td background-color="light-yellow">展示有效/失效对象清单，允许“基于当前内容重新生成”，不允许按旧建议部分写入。</td><td background-color="light-yellow">只读查看并等待管理员。</td><td background-color="light-yellow">避免半成功造成结构不一致；重新生成产生新卡。</td></tr>
+</tbody>
+</table>
+<p><b>卡片语义：</b>建议阶段是基于当时上下文和引用快照的推理结果；管理员同意后必须再次读取当前版本、检查权限和冲突。无变化才写入；不再适合则旧卡失效；信息不足则澄清。卡片只触达任务发起者，其他成员通过 Tool Call 执行痕迹感知状态，沿用 Composer 已确认规则。</p>
+
+<h3>功能六：写入、版本冲突与历史</h3>
+<table>
+<colgroup><col width="170"/><col width="200"/><col width="210"/><col width="210"/></colgroup>
+<thead><tr><th background-color="light-gray">场景</th><th background-color="light-gray">系统行为</th><th background-color="light-gray">数据规则</th><th background-color="light-gray">验收点</th></tr></thead>
+<tbody>
+<tr><td background-color="light-yellow">写入前二次检查。（Panel功能增强）</td><td background-color="light-yellow">校验项目、文件、版本、目标块、用户权限和建议适用性。</td><td background-color="light-yellow">任一关键条件不满足则不覆盖，进入已失效或澄清。</td><td background-color="light-yellow">不能用旧引用静默覆盖新内容。</td></tr>
+<tr><td background-color="light-yellow">局部写入。（Panel新功能）</td><td background-color="light-yellow">只修改建议卡列出的目标对象；保持未选结构和 Markdown 合法性。</td><td background-color="light-yellow">单文件多对象作为一次原子提交；任一对象失败则整体不写入。</td><td background-color="light-yellow">无部分成功；写入后所有对象可重新定位。</td></tr>
+<tr><td>全局写入。</td><td>生成完整新版本并覆盖 <code>agents.md</code>。</td><td>保留确认人、发起人、Agent、来源版本和变更摘要。</td><td>成功后 Panel 与下载内容一致。</td></tr>
+<tr><td>引用文件写入。</td><td>若目标属于 agents.md 明确引用的文件，卡片必须标明目标文件。</td><td>多文件写入的事务策略待技术方案确认；本期不得把未声明文件纳入范围。</td><td>用户清楚每个被修改的文件和摘要。</td></tr>
+<tr><td>历史记录。</td><td>记录项目简报范围内成功覆盖。</td><td>失败、忽略、失效不进入成功历史；可在审计日志保留事件但不混入修改记录。</td><td>历史可从 Panel 查看并定位变更对象。</td></tr>
+</tbody>
+</table>
+
+<h3>功能七：APP 端项目简报 Panel</h3>
+<p>APP 端保留原 PRD 的完整业务闭环：查看项目简报、主动发起更新、A2UI 确认、修改记录只读查看。Panel 改造在移动端表现为项目简报二级页或 Bottom Panel，业务语义与 PC 一致，布局按移动端组件约束适配。</p>
+<table>
+<colgroup><col width="130"/><col width="220"/><col width="220"/><col width="190"/></colgroup>
+<thead><tr><th background-color="light-gray">APP 场景</th><th background-color="light-gray">设计方案</th><th background-color="light-gray">交互细节</th><th background-color="light-gray">验收点</th></tr></thead>
+<tbody>
+<tr><td>入口</td><td>项目页右上角“三点”菜单中，“项目简报”作为第一个入口。</td><td>点击进入二级页；成功卡片也可进入。</td><td>命名与 PC 一致，不影响原项目菜单。</td></tr>
+<tr><td>空态</td><td>展示说明和 Agent 自动维护、用户主动 @Agent 两种方法。</td><td>不提供直接编辑；可回到 Composer 发起创建。</td><td>人类不能绕过 AI 和审核写入。</td></tr>
+<tr><td>有内容页</td><td>展示说明 Banner、只读 Markdown 正文、历史和更新入口。</td><td>正文层级、列表、引用、表格按移动端阅读态渲染。</td><td>无编辑入口误导，内容与 PC 同版本。</td></tr>
+<tr><td>主动更新</td><td>预置 Prompt 粘贴到 Composer。</td><td>约 300ms 后打开 @Mention Bottom BasicPanel，默认 Agent Tab；不自动发送。</td><td>必须 @Agent 才触发写入链路。</td></tr>
+<tr><td>A2UI 卡片</td><td>复用待确认、写入中、成功、忽略、失败、失效状态。</td><td>同意后仍二次检查；必要时推新卡或澄清。</td><td>状态与 PC 一致，按钮按角色收敛。</td></tr>
+<tr><td>修改记录</td><td>History Icon 打开由下往上的 BasicPanel。</td><td>遵循最大高度，只读展示成功记录。</td><td>失败、忽略、失效不进入。</td></tr>
+<tr><td background-color="light-yellow">精确引用（Panel新功能）</td><td background-color="light-yellow">长按或点击块级操作选择章节、段落、列表项、表格行或链接。</td><td background-color="light-yellow">引用进入移动端 Composer 附件区；复杂多选可先仅支持单对象。</td><td background-color="light-yellow">对象语义与 PC 一致；首期多选范围待移动端评估。</td></tr>
+</tbody>
+</table>
+
+<h3>功能八：角色权限与协作边界</h3>
+<table>
+<colgroup><col width="105"/><col width="75"/><col width="75"/><col width="75"/><col width="75"/><col width="75"/><col width="75"/><col width="160"/></colgroup>
+<thead><tr><th background-color="light-gray">角色</th><th background-color="light-gray">查看</th><th background-color="light-gray">选择引用</th><th background-color="light-gray">发起请求</th><th background-color="light-gray">同意写入</th><th background-color="light-gray">忽略</th><th background-color="light-gray">重试</th><th background-color="light-gray">权限提示</th></tr></thead>
+<tbody>
+<tr><td>项目管理员</td><td>是</td><td>是</td><td>是</td><td>是</td><td>是</td><td>是</td><td>关键写入仍需主动点击确认。</td></tr>
+<tr><td>协作者</td><td>是</td><td>是</td><td>是</td><td>否</td><td>否</td><td>否</td><td>“需要项目管理员进行操作”。</td></tr>
+<tr><td>只读访客</td><td>待确认</td><td>待确认</td><td>否</td><td>否</td><td>否</td><td>否</td><td>角色是否存在及可见范围待 PM 确认。</td></tr>
+<tr><td>无项目权限用户</td><td>否</td><td>否</td><td>否</td><td>否</td><td>否</td><td>否</td><td>不展示正文、引用摘要或历史。</td></tr>
+<tr><td>Agent</td><td>按授权</td><td>按输入</td><td>可建议</td><td>否</td><td>否</td><td>否</td><td>任何 Agent 不得绕过管理员直接覆盖。</td></tr>
+</tbody>
+</table>
+<p><b>权限规则：</b>可见性、读取、引用解析和写入均需服务端鉴权。若权限在卡片生成后变化，以点击同意时的最新权限为准。引用 Chip 只显示当前用户有权查看的摘要；消息分享、跨会话或跨项目不得泄漏正文。</p>
+
+<h3>功能九：onepage、引用文件与工具 Skill</h3>
+<table>
+<colgroup><col width="160"/><col width="550"/></colgroup>
+<thead><tr><th background-color="light-gray">规则项</th><th background-color="light-gray">说明</th></tr></thead>
+<tbody>
+<tr><td>onepage 写法</td><td>核心内容直接写在 <code>agents.md</code> 中，可包含必要引用，适合上下文集中且希望快速读完的项目。</td></tr>
+<tr><td>引用型写法</td><td><code>agents.md</code> 作为入口或目录；被明确引用且成员/Agent 有权限访问的文件共同组成完整项目简报。</td></tr>
+<tr><td>范围判定</td><td>不得默认扫描整个目录、全部历史文件或未声明文件。</td></tr>
+<tr><td background-color="light-yellow">Panel 阅读（Panel功能增强）</td><td background-color="light-yellow">默认打开 agents.md；引用文件以可点击对象展示，可进入 Panel 内二级 Preview Workspace/Object Inspector，保留返回路径。</td></tr>
+<tr><td background-color="light-yellow">引用文件精确选择（Panel新功能）</td><td background-color="light-yellow">只有打开并有权限读取的引用文件可生成结构化引用；Chip 必须显示目标文件名，避免与 agents.md 混淆。</td></tr>
+<tr><td>更新卡覆盖</td><td>建议卡标明影响 agents.md、某个引用文件或多个对象；管理员确认后写回对应目标。</td></tr>
+<tr><td>工具 Skill</td><td>维护逻辑继续遵循“先比较、证据优先、最小必要更新、区分事实与判断、无变化返回 no_change、保留 owner 审核边界”。</td></tr>
+<tr><td>状态判断</td><td>保留 <code>onboarding</code>、<code>create_suggestion</code>、<code>update_suggestion</code>、<code>no_change</code> 四类动作。</td></tr>
+</tbody>
+</table>
+
+<h3>功能十：原型演示与生产化范围</h3>
+<table>
+<colgroup><col width="130"/><col width="210"/><col width="250"/><col width="110"/></colgroup>
+<thead><tr><th background-color="light-gray">项目</th><th background-color="light-gray">原型现状</th><th background-color="light-gray">生产化要求</th><th background-color="light-gray">状态</th></tr></thead>
+<tbody>
+<tr><td>Panel 展示</td><td>可先使用 Mock 文档和角色验证布局。</td><td>读取真实项目简报、结构块、引用文件和最新版本。</td><td><code>follow_up</code></td></tr>
+<tr><td>结构化引用</td><td>可用前端 Mock Block ID 演示。</td><td>服务端提供稳定定位、版本校验、权限校验和引用解析。</td><td><code>follow_up</code></td></tr>
+<tr><td>A2UI</td><td>前端可模拟各状态。</td><td>建议、确认、写入、恢复和失效状态持久化。</td><td><code>follow_up</code></td></tr>
+<tr><td>写入能力</td><td>前端模拟成功/失败。</td><td>真实原子写入、冲突检测、幂等、失败不覆盖和历史记录。</td><td><code>follow_up</code></td></tr>
+<tr><td>权限</td><td>Mock 管理员/协作者。</td><td>服务端按项目、文件、用户、会话和设备适用范围校验。</td><td><code>follow_up</code></td></tr>
+<tr><td>演示入口</td><td>仅开发环境可插入演示项目。</td><td>生产环境不得暴露 Mock 路由或数据。</td><td><code>resolved</code>（规则）</td></tr>
+<tr><td>录制测试</td><td>待定。</td><td>覆盖 Web/App 正常、异常、权限、冲突及跨项目隔离。</td><td><code>pending</code></td></tr>
+</tbody>
+</table>
+
+<h2>核心指标</h2>
+<table>
+<colgroup><col width="210"/><col width="390"/><col width="110"/></colgroup>
+<thead><tr><th background-color="light-gray">指标</th><th background-color="light-gray">口径</th><th background-color="light-gray">目标值</th></tr></thead>
+<tbody>
+<tr><td>项目简报 Panel 打开率</td><td>打开项目简报 Panel 的项目会话数 / 展示项目简报入口的项目会话数</td><td>待定</td></tr>
+<tr><td>精确引用使用率</td><td>包含结构化项目简报引用的更新请求数 / 全部项目简报更新请求数</td><td>待定</td></tr>
+<tr><td>引用发送完成率</td><td>成功发送的项目简报引用请求数 / 生成项目简报引用 Chip 的会话数</td><td>待定</td></tr>
+<tr><td>管理员确认率</td><td>管理员点击“同意”的建议数 / 待确认建议数</td><td>待定</td></tr>
+<tr><td>写入成功率</td><td>写入成功建议数 / 管理员确认写入建议数</td><td>待定</td></tr>
+<tr><td>引用失效率</td><td>因版本、目标块或权限变化而失效的建议数 / 携带结构化引用的建议数</td><td>待定</td></tr>
+<tr><td>权限拦截准确率</td><td>被正确限制的越权关键操作次数 / 越权关键操作尝试次数</td><td>100%</td></tr>
+</tbody>
+</table>
+
+<h2>自动创建 Meego 必填字段</h2>
+<ul>
+<li><b>需求名称：</b>agents.md 项目简报 Panel 展示与 Composer 修改闭环</li>
+<li><b>业务线：</b>Coze Space（待 PM 确认）</li>
+<li><b>需求类型：</b>产品需求</li>
+<li><b>需求文档：</b>当前飞书文档链接</li>
+<li><b>涉及端：</b>Web、Server、App；桌面端待确认</li>
+<li><b>需要官网文档更新：</b>待定</li>
+<li><b>是否有数据需求：</b>是</li>
+<li><b>是否需要安全合规评估：</b>是</li>
+</ul>
+
+<h2>附录</h2>
+
+<h3>附录 A：端覆盖范围</h3>
+<table>
+<colgroup><col width="90"/><col width="110"/><col width="220"/><col width="180"/><col width="150"/></colgroup>
+<thead><tr><th background-color="light-gray">端</th><th background-color="light-gray">本期状态</th><th background-color="light-gray">涉及能力</th><th background-color="light-gray">端独有约束</th><th background-color="light-gray">责任人</th></tr></thead>
+<tbody>
+<tr><td>Web</td><td><code>pending</code></td><td>Panel Shell、正文、结构选区、Composer 引用、A2UI、历史</td><td>右侧空间和对话区联动</td><td>待定</td></tr>
+<tr><td>Server</td><td><code>follow_up</code></td><td>读取、定位、鉴权、建议、写入、冲突、历史</td><td>真实持久化与幂等</td><td>待定</td></tr>
+<tr><td>App</td><td><code>pending</code></td><td>二级页、阅读、单对象引用、A2UI、历史</td><td>Bottom Panel、长按/块操作</td><td>待定</td></tr>
+<tr><td>桌面端</td><td><code>pending</code></td><td>跟随 Web 或独立容器待确认</td><td>窗口宽度和多栏布局</td><td>待定</td></tr>
+</tbody>
+</table>
+
+<h3>附录 B：数据埋点需求</h3>
+<table>
+<colgroup><col width="220"/><col width="180"/><col width="190"/><col width="90"/><col width="120"/></colgroup>
+<thead><tr><th background-color="light-gray">事件名</th><th background-color="light-gray">触发时机</th><th background-color="light-gray">关键维度</th><th background-color="light-gray">涉及端</th><th background-color="light-gray">验收方式</th></tr></thead>
+<tbody>
+<tr><td><code>project_brief_panel_open</code></td><td>用户打开项目简报 Panel</td><td>project_type、role、has_brief、source</td><td>Web/App</td><td>D7 抽样</td></tr>
+<tr><td><code>project_brief_reference_create</code></td><td>生成结构化引用</td><td>object_type、count、file_type、role</td><td>Web/App</td><td>漏斗看板</td></tr>
+<tr><td><code>project_brief_reference_send</code></td><td>携带引用发送请求</td><td>object_type、agent、multi_select</td><td>Web/App</td><td>漏斗看板</td></tr>
+<tr><td><code>project_brief_update_decision</code></td><td>管理员同意、忽略或重试</td><td>action、card_state、scope、role</td><td>全端</td><td>漏斗看板</td></tr>
+<tr><td><code>project_brief_write_result</code></td><td>写入终态</td><td>result、failure_reason、conflict_type</td><td>Server</td><td>日志对账</td></tr>
+<tr><td><code>project_brief_permission_block</code></td><td>无权限查看、引用或写入</td><td>role、action、surface</td><td>全端</td><td>QA 验证</td></tr>
+</tbody>
+</table>
+
+<h3>附录 C：内容安全、法务与隐私</h3>
+<table>
+<colgroup><col width="150"/><col width="190"/><col width="300"/><col width="120"/></colgroup>
+<thead><tr><th background-color="light-gray">领域</th><th background-color="light-gray">涉及内容</th><th background-color="light-gray">要求</th><th background-color="light-gray">责任人</th></tr></thead>
+<tbody>
+<tr><td>内容安全</td><td>项目对话、AI 生成简报、引用文件</td><td>复用现有项目内内容安全策略；若可对外分享，需确认额外审核规则。</td><td>待定</td></tr>
+<tr><td>隐私</td><td>成员身份、对话用途、历史记录、引用摘要</td><td>确认是否改变对话内容用途、留存范围和分享可见性；消息回显不得泄漏无权正文。</td><td>待定</td></tr>
+<tr><td>权限</td><td>项目、文件、会话、设备</td><td>读取、引用解析、写入和消息回放均鉴权；本地设备权限按用户+会话+设备维度。</td><td>待定</td></tr>
+</tbody>
+</table>
+
+<h3>附录 D：风控与滥用防护</h3>
+<table>
+<colgroup><col width="180"/><col width="370"/><col width="150"/></colgroup>
+<thead><tr><th background-color="light-gray">风险点</th><th background-color="light-gray">策略</th><th background-color="light-gray">状态</th></tr></thead>
+<tbody>
+<tr><td>频繁生成和刷写</td><td>建议生成和写入分别限频；保留管理员确认；重复请求可合并或提示。</td><td>待技术评估</td></tr>
+<tr><td>旧版本误覆盖</td><td>写入前二次检查版本和块定位，冲突进入已失效。</td><td>本期必须</td></tr>
+<tr><td>跨项目泄漏</td><td>引用按项目和会话隔离，跨项目发送前阻止。</td><td>本期必须</td></tr>
+<tr><td>部分写入破坏结构</td><td>同文件多对象原子提交，失败整体回滚。</td><td>本期必须</td></tr>
+<tr><td>Agent 越权</td><td>任何 Agent 只能生成建议，真实写入由服务端校验管理员确认。</td><td>本期必须</td></tr>
+</tbody>
+</table>
+
+<h3>附录 E：通用 Agent 兼容与评测</h3>
+<table>
+<colgroup><col width="160"/><col width="300"/><col width="260"/></colgroup>
+<thead><tr><th background-color="light-gray">场景</th><th background-color="light-gray">兼容要求</th><th background-color="light-gray">评测建议</th></tr></thead>
+<tbody>
+<tr><td>Coze Agent</td><td>识别结构化引用、生成范围明确的建议并遵守 owner 审核。</td><td>无简报、已有简报、全局更新、局部更新、多选和冲突。</td></tr>
+<tr><td>三方云端 Agent</td><td>通过统一引用协议获得允许范围，不依赖 Coze 私有 UI 文本。</td><td>不同 Agent 输出一致性、权限失败和工具不可用。</td></tr>
+<tr><td>本地 Agent</td><td>保留原生授权语义；涉及本机文件时叠加设备权限。</td><td>离线、设备切换、文件变化和拒绝授权。</td></tr>
+<tr><td>多 Agent</td><td>显式选择优先；多 Agent 并行产生多卡时不自动合并建议。</td><td>并行卡片、只处理一张、其他卡失效和 Router 后续兼容。</td></tr>
+</tbody>
+</table>
+
+<h3>附录 F：验收用例</h3>
+<table>
+<colgroup><col width="120"/><col width="280"/><col width="330"/></colgroup>
+<thead><tr><th background-color="light-gray">类型</th><th background-color="light-gray">用例</th><th background-color="light-gray">预期</th></tr></thead>
+<tbody>
+<tr><td>正常路径</td><td>管理员选择一个章节，补充 Prompt 并 @Agent，确认建议。</td><td>Chip 正确回显；卡片显示目标章节；只修改该章节；Panel 刷新并新增历史。</td></tr>
+<tr><td>空态</td><td>无 agents.md 时点击“创建项目简报”。</td><td>打开 @Agent，不自动发送；确认后创建文件并展示有内容态。</td></tr>
+<tr><td>取消</td><td>生成引用后删除 Chip 或清空草稿。</td><td>不生成专属建议、不写入、不记历史。</td></tr>
+<tr><td>失败</td><td>写入服务返回错误。</td><td>原文件不变；卡片失败；管理员可重试。</td></tr>
+<tr><td>冲突</td><td>建议生成后目标段落被其他人修改。</td><td>旧卡失效，不覆盖；可基于当前内容重新生成。</td></tr>
+<tr><td>权限</td><td>协作者尝试同意；或管理员确认前被降权。</td><td>服务端拦截，不写入，展示最新权限结果。</td></tr>
+<tr><td>跨项目</td><td>携带 A 项目引用切换到 B 项目发送。</td><td>阻止发送并提示删除或返回原项目。</td></tr>
+<tr><td>App</td><td>移动端选择段落并发起更新。</td><td>进入 Composer，引用可见；A2UI 状态与 PC 一致。</td></tr>
+<tr><td>引用型简报</td><td>选择 agents.md 引用文件中的表格行。</td><td>Chip 显示文件名与表格位置；卡片明确目标文件；成功后正确刷新。</td></tr>
+</tbody>
+</table>
+
+<h2>待确认事项</h2>
+<checkbox done="false">阻断：服务端是否已有可稳定寻址 Markdown 块的 ID/结构路径协议；若没有，需先确定解析与版本策略。</checkbox>
+<checkbox done="false">阻断：同文件多对象以及跨文件写入的原子性、回滚和历史记录策略。</checkbox>
+<checkbox done="false">阻断：项目管理员、Owner、协作者、只读访客的最终角色映射和服务端权限接口。</checkbox>
+<checkbox done="false">确认本期是否继续排除视频项目，以及桌面端是否直接复用 Web Panel。</checkbox>
+<checkbox done="false">确认 App 首期支持单对象还是多对象精确引用。</checkbox>
+<checkbox done="false">确认多选数量、总文本长度、长文档性能和引用快照保留时长。</checkbox>
+<checkbox done="false">确认“帮我更新”遇到 Composer 已有草稿时的产品策略；本稿建议保留并追加，不静默清空。</checkbox>
+<checkbox done="false">补充 PC/App 设计稿、研发排期、责任人、指标目标值和数据看板负责人。</checkbox>
+<checkbox done="false">正式发布前完成安全、法务、隐私、风控和官网文档更新评审。</checkbox>

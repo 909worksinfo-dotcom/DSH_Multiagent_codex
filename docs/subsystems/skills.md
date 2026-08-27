@@ -2,9 +2,21 @@
 
 English | [中文](skills.zh.md)
 
-The [skill capability family](../../packages/skill) includes the Service Definition ([dsh-skill](../../packages/skill/skill), `ctx.skills`), the local Service Provider ([dsh-skill-filesystem](../../packages/skill/skill-filesystem)), the optional packaged badge provider ([dsh-skill-badge](../../packages/skill/skill-badge)), and the Consumer ([dsh-tool-skill](../../packages/skill/tool-skill)). The registry merges provider catalogs across its host and per-scope layers; providers contribute local or packaged skills; the Consumer owns the initial and replacement catalogs plus the model-facing `skill` tool. Skills are optional instructions, not session events, so their vocabulary lives here rather than in [core.md](core.md).
+The [skill capability family](../../packages/skill) includes the Service Definition ([dsh-skill](../../packages/skill/skill), `ctx.skills`), the local Service Provider ([dsh-skill-filesystem](../../packages/skill/skill-filesystem)), the task-bound marketplace discovery service ([dsh-skill-marketplace](../../packages/skill/skill-marketplace), `ctx.skillMarketplace`), the optional packaged badge provider ([dsh-skill-badge](../../packages/skill/skill-badge)), and the Consumer ([dsh-tool-skill](../../packages/skill/tool-skill)). The registry merges provider catalogs across its host and per-scope layers; providers contribute local or packaged skills; the Consumer owns the initial and replacement catalogs plus the model-facing `skill` tool. Skills are optional instructions, not session events, so their vocabulary lives here rather than in [core.md](core.md)
 
-Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts), [`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts), [`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts), and [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts).
+Source: [`packages/skill/skill/src/index.ts`](../../packages/skill/skill/src/index.ts), [`packages/skill/skill-filesystem/src/index.ts`](../../packages/skill/skill-filesystem/src/index.ts), [`packages/skill/skill-marketplace/src/index.ts`](../../packages/skill/skill-marketplace/src/index.ts), [`packages/skill/skill-badge/src/index.ts`](../../packages/skill/skill-badge/src/index.ts), and [`packages/skill/tool-skill/src/index.ts`](../../packages/skill/tool-skill/src/index.ts)
+
+## Task-bound marketplace discovery
+
+`ctx.skillMarketplace.search()` concurrently observes Smithery, Composio, and skills.sh without registering ambient skills or tools. Each provider result preserves readiness separately so a caller can distinguish an available method, pending authorization, and an outage. The service returns detached planning values; [automatic team formation](../../.agents/notes/implemented/feature/2026-08-27-task-bound-skill-marketplace-discovery.md) owns selection, persistence, and child-scope mounting
+
+```ts type-equiv
+/** Complete multi-market discovery result. */
+interface SkillMarketplaceSearchResult {
+  readonly query: string
+  readonly providers: readonly SkillMarketplaceProviderResult[]
+}
+```
 
 ## Provider registry
 
@@ -241,6 +253,24 @@ The model-facing `skill({ name })` tool validates the kebab-case name, finds the
 ## Cordis API
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — this section is byte-identical in both language sides of the page. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
+
+<a id="ctxskillmarketplace--skillmarketplace"></a>
+
+### `ctx.skillMarketplace` — `SkillMarketplace`
+
+Public marketplace search used by automatic team formation.
+
+```ts cordis-catalog
+/**
+ * Search all first-wave providers without letting one outage suppress the others.
+ * @param rawQuery - expert capability query.
+ * @param signal - caller cancellation.
+ * @returns ordered provider observations and bounded candidates.
+ */
+async search(rawQuery: string, signal?: AbortSignal): Promise<SkillMarketplaceSearchResult>
+```
+
+Source: [`packages/skill/skill-marketplace/src/index.ts:122`](../../packages/skill/skill-marketplace/src/index.ts)
 
 <a id="ctxskills--skillregistry"></a>
 

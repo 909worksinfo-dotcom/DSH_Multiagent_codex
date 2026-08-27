@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "identity": "user",
+  "data": {
+    "document": {
+      "content": "<fragment mode=\"outline\"><outline><h2 id=\"doxcnDsFW5AQq2nTXe2MmN3Albd\">需求背景</h2><h3 id=\"doxcnYrRJr3CwnTD6dPjZ1qYuJg\">要解决的问题</h3><h3 id=\"doxcnX7ggbC1G9p3dsLoe3YMHne\">如何衡量收益</h3><h3 id=\"doxcnKfR2W3NvDutREfmfmCqBEe\">商业化逻辑</h3><h2 id=\"doxcn7ajyVRCv25t3hhdHRlYcsb\">产品方案</h2><h3 id=\"doxcn1LnxvTTvGwB9D4KK1VuPig\">功能一：项目对话内查看项目简报</h3><h3 id=\"doxcnvyfystbLaMVdNBZvsMUOOf\">功能二：主动发起项目简报更新请求</h3><h3 id=\"doxcn2qCmGOkSP4ekneEFTkHcJe\">功能三：A2UI 更新建议卡片状态机</h3><h3 id=\"doxcn7e68d0Yn1S2yVuWKU3aTvb\">功能四：APP 端项目简报设计</h3><h3 id=\"doxcnlhahbBT0nrYsvsgZFB0cGc\">功能五：角色权限与协作边界</h3><h3 id=\"doxcnKWaAfEsqgOUTn2RTak9tiE\">功能六：原型演示与生产化范围</h3><h3 id=\"doxcnDUJJHxpMmxB2IICuN1Ff6c\">项目简报范围：onepage 与引用文件</h3><h3 id=\"doxcnJsQJDG6NOgVQbTTYhcsQ4J\">工具 Skill：维护项目简报 / agents.md</h3><h2 id=\"doxcnY9xMWU3GSUrwoFFlpQwPTh\">核心指标</h2><h2 id=\"doxcn7fgLnXnm93hcggWKXOK8ld\">自动创建meego必填字段</h2><h2 id=\"doxcnFvJ9AN8TwA0W6eB59DKxQd\">附录1</h2><h3 id=\"WJcGdzhvjo8kIqxWrPNc4oSbnwc\">设计稿</h3><h3 id=\"doxcnYqMo80rGJXXmzSdYgrVDqc\">附录 A：端覆盖范围</h3><h3 id=\"doxcny7aapT3YSbyzft7KBHS8HC\">附录 B：数据埋点需求</h3><h3 id=\"doxcnVCLkTifJq3AEtJcdMW5M8f\">附录 C：内容安全合规说明</h3><h3 id=\"doxcnr88xSHhvutC0nL5FhfcSWf\">附录 D：法务与隐私</h3><h3 id=\"doxcnWwTTnL2KfjTo9fXuirEj4e\">附录 E：风控与滥用防护</h3><h3 id=\"doxcnjcKWyaCXLnCTLVtEb04grf\">附录 F：通用 Agent 兼容</h3><h3 id=\"doxcntiYGaAVFJFOzIK69GUzA8d\">附录 G：相关链接与生产就绪核对、泳道</h3><h2 id=\"doxcnDHYCOdXcMTtjFwf9BoE0oe\">附录2：Production Spec 附件与交付信息</h2><h3 id=\"doxcnzNuL3U26DxfpUpMvyeXoTr\">Spec 交付状态</h3><h3 id=\"doxcnB25ktJooEZNLRpWeJzysic\">Spec 证据文件</h3><h3 id=\"doxcnmw5jUltNNV5ijWIqelAYsd\">Spec 核心差距</h3><h3 id=\"doxcnijnYfwM88bAVd4gVUh2P8d\">Spec 已确认决策</h3><h3 id=\"doxcnn16jwPJ1pBPideXEblPRnc\">Spec 验证信息</h3><h3 id=\"doxcnWYxHud38FtKasHZ4zRkBqc\">Spec 发布与分享信息</h3><h3 id=\"doxcndMT85XIyKoBy1opTaHQs5e\">后续 finalize 条件</h3></outline></fragment>",
+      "document_id": "EnDkdsMOeoHj2YxddM8cBSMEnbh",
+      "revision_id": 120
+    }
+  }
+}

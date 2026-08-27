@@ -30,6 +30,7 @@ export function toolChatSnapshot(
   const empty: readonly string[] = []
   return {
     order: nodes.map(node => node.key),
+    flow: nodes.map(node => ({ key: `regular:${node.key}`, mode: 'regular' as const, nodeKeys: [node.key] })),
     nodes: {
       get: key => byKey.get(key),
       values: () => nodes,

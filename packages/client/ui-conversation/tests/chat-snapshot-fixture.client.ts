@@ -43,6 +43,7 @@ class FixtureNodeStore implements ChatNodeStore {
         && previous.kind === candidate.kind
         && previous.anchorSeq === candidate.anchorSeq
         && previous.visibility === candidate.visibility
+        && previous.flow === candidate.flow
         && nodeSource(previous) === nodeSource(candidate)
         ? previous
         : candidate
@@ -103,6 +104,20 @@ function assistantData(node: AssistantMessageNode) {
   }
 }
 
+function reasoningOnly(blocks: readonly AssistantMessageNode['blocks'][number][]): boolean {
+  let hasReasoning = false
+  for (const block of blocks) {
+    if (block.kind === 'reasoning') {
+      hasReasoning ||= block.text.trim() !== ''
+      continue
+    }
+    if (block.kind === 'tool-call') continue
+    if (block.kind === 'text' && block.text.trim() === '') continue
+    return false
+  }
+  return hasReasoning
+}
+
 function settledNode(
   node: ConversationNode,
   turns: ReadonlyMap<number, TurnLocation>,
@@ -117,12 +132,26 @@ function settledNode(
       ? { kind: 'session' as const }
       : { kind: 'turn' as const, turn },
     visibility: 'visible' as const,
+    ...node.kind === 'context' ? { flow: 'activity' as const } : {},
   }
   switch (node.kind) {
-    case 'assistant':
-      return { ...base, kind: 'assistant-step', data: assistantData(node) }
+    case 'assistant': {
+      const data = assistantData(node)
+      return {
+        ...base,
+        kind: 'assistant-step',
+        data,
+        ...reasoningOnly(data.blocks) ? { flow: 'activity' as const } : {},
+      }
+    }
     case 'tool-result':
-      return { ...base, key: `fixture:tool:${node.callId}`, kind: 'tool-call', data: { root: node } }
+      return {
+        ...base,
+        key: `fixture:tool:${node.callId}`,
+        kind: 'tool-call',
+        flow: 'activity',
+        data: { root: node },
+      }
     case 'model-retry':
       return { ...base, key: 'fixture:model-retry', kind: 'model-retry', data: { attempts: [node], current: node } }
     default:
@@ -205,6 +234,7 @@ export function chatSnapshotFixture(input: {
       anchorSeq: Number.MAX_SAFE_INTEGER - 1,
       location: turn === undefined ? { kind: 'session' } : { kind: 'turn', turn },
       visibility: 'visible',
+      ...reasoningOnly(legacy.partial.blocks) ? { flow: 'activity' as const } : {},
       data: {
         status: 'running',
         turn: legacy.partial.turn,
@@ -224,6 +254,7 @@ export function chatSnapshotFixture(input: {
       anchorSeq: Number.MAX_SAFE_INTEGER,
       location: turn === undefined ? { kind: 'session' } : { kind: 'turn', turn },
       visibility: 'visible',
+      flow: 'activity',
       data: { root: call },
     })
   }
@@ -271,6 +302,13 @@ export function chatSnapshotFixture(input: {
   const byKey = new Map(store.values().map(node => [node.key, node]))
   const nextOrder = nodes.map(node => node.key)
   const order = previous !== undefined && sameValues(previous.order, nextOrder) ? previous.order : nextOrder
+  const flow = [] as Array<{ key: string; mode: 'activity' | 'regular'; nodeKeys: string[] }>
+  for (const key of order) {
+    const mode = byKey.get(key)?.flow === 'activity' ? 'activity' : 'regular'
+    const preceding = flow.at(-1)
+    if (mode === 'activity' && preceding?.mode === 'activity') preceding.nodeKeys.push(key)
+    else flow.push({ key: `${mode}:${key}`, mode, nodeKeys: [key] })
+  }
   const byTurn = new Map<number, readonly string[]>()
   for (const turn of turns.keys()) {
     byTurn.set(turn, order.filter((key) => {
@@ -290,6 +328,7 @@ export function chatSnapshotFixture(input: {
     : { turnOrder: [...turns.keys()], turns }
   return {
     order,
+    flow,
     nodes: store,
     locations,
     timeline,
