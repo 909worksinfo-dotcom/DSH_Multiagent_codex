@@ -358,7 +358,9 @@ describe('CollaborationRuntime', () => {
     expect(leadPrompt).toContain('主协调智能体不自行使用 Bash、联网搜索、技能加载或其他日常会话工具')
     expect(leadPrompt).toContain('称每位专家为任务章程中的完整角色名')
     expect(leadPrompt).toContain('不得使用 expert-N 或“专家N”')
-    expect(leadPrompt).toContain('不要重复创建 Team Charter 中已有的任务')
+    expect(leadPrompt).toContain('不要重复创建或擅自改写 Team Charter 中已有的任务')
+    expect(leadPrompt).toContain('把相同依赖层视为一个阶段')
+    expect(leadPrompt).toContain('携带 task_id 发送给该任务预分配的 owner')
     expect(leadPrompt).toContain('所有公开任务名、观点、质疑、回应、评审、资产、裁决和最终交付都使用简体中文')
     expect(api.calls.map(call => call.method)).toEqual([
       'session.rename',

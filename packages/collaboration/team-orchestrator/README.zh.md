@@ -32,16 +32,16 @@
 
 ## 分析与规划
 
-`create()` 会保留原始 objective，在没有 hint 时推断 domain，把显式 workstream 标准化，或根据多语言分隔符与任务动作信号生成有界 workstream，再计算依赖深度、能力密度、可拆解性和风险指标。确定性专家区间为 `simple = 1`、`medium = 2..4`、`complex = 5..8`。可选 `productTitle` context 会参与推断，但不会改写展示用 objective
+`create()` 会保留原始 objective，在没有 hint 时推断 domain，把显式 workstream 标准化，或根据多语言分隔符与任务动作信号生成有界 workstream，再计算依赖深度、能力密度、可拆解性和风险指标。每个任务至少配置三名专家，simple 固定三名，medium 为三至四名，complex 为五至八名。可选 `productTitle` context 会参与推断，但不会改写展示用 objective
 
-planner 会按稳定能力相关性和配置顺序排列确切 revision。simple 任务使用 `producer_reviewer`，medium 任务使用 `centralized` 或 `parallel`，complex 任务使用 `hybrid` 或 `grouped`。容量不足或 revision 不可用会把 P1 run 终止为 `formation_failed`，绝不会只保留 Lead 继续执行
+planner 会按稳定能力相关性和配置顺序排列确切 revision。自动推断的目标会展开为领域专属执行 DAG，用户显式提供的 workstream 保持不变。planner 会把依赖层分组为明确的串行或并行阶段，并把每个步骤分配给一个不可变 roster slot。simple 任务使用 `producer_reviewer`，medium 任务使用 `centralized` 或 `parallel`，complex 任务使用 `hybrid` 或 `grouped`。容量不足或 revision 不可用会把 P1 run 终止为 `formation_failed`，绝不会只保留 Lead 继续执行
 
-charter 会在 provisioning 开始前提交 objective、success criteria、确切 roster、task DAG、topology、communication limit、quality check、每位专家的 execution budget 和关闭式 termination rule。orchestrator 随后会根据该精确 charter 与已提交 catalog revision 物化一份不可变 TeamRun protocol：每个 slot 在专家 provisioning 可成功前都会获得对应 blueprint 权限与确定性 topology route
+charter 会在 provisioning 开始前提交 objective、success criteria、确切 roster、已分配 task DAG、执行阶段、topology、communication limit、quality check、每位专家的 execution budget 和关闭式 termination rule。orchestrator 随后会根据该精确 charter 与已提交 catalog revision 物化一份不可变 TeamRun protocol：每个 slot 在专家 provisioning 可成功前都会获得对应 blueprint 权限与确定性 topology route
 
 ## 服务操作
 
 - `create(lead, request)` 创建或幂等恢复 profile、plan 和 charter
-- `form(lead, command, signal)` 会物化或校验 Charter task DAG 与质量门，通过 `ctx.expertRuntime` provision 或恢复每位计划专家，并且只在精确满编时激活
+- `form(lead, command, signal)` 会物化或校验 Charter task DAG 与质量门，通过 `ctx.expertRuntime` provision 或恢复每位计划专家，在不启动阻塞任务的前提下预分配所有任务，并且只在精确满编时激活
 - `orchestrate(lead, request, signal)` 是一键执行 `create` 加 `form` 的入口
 - `retry(lead, command, signal)` 幂等恢复尚未终态的 provisioning run，不重放已经接受的 child 工作
 - `replaceExpert(lead, request, signal)` 会把一个 active 运行中的 failed member 幂等绑定回持久 roster slot，通过 ExpertRuntime provision 下一次不可变 attempt，并把失败 attempt 保留为审计行

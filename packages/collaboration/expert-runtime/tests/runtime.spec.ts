@@ -92,9 +92,10 @@ describe('expert public-language instruction', () => {
     })
     expect(prompt).toContain('Use Simplified Chinese for every public conclusion')
     expect(prompt).toContain('translate it into Chinese before publishing')
-    expect(prompt).toContain('publish at least one concise public inform, proposal, review, challenge, response, or completion_request')
-    expect(prompt).toContain('A direct assistant response alone does not count as a team contribution')
-    expect(prompt).toContain('For ordinary public messages, omit challenge_id')
+    expect(prompt).toContain('initial activation turn is setup-only')
+    expect(prompt).toContain('write a review-state artifact authored by you')
+    expect(prompt).toContain('route exactly one artifact-linked public handoff or review')
+    expect(prompt).toContain('For ordinary routed messages, omit challenge_id')
     expect(prompt).toContain('use the latest revision')
   })
 
@@ -145,6 +146,11 @@ function stubAgent(ctx: Context, session: Session, options: Agent['options'] = {
     ctx,
     cancel: vi.fn(),
   } as unknown as Agent
+}
+
+function emitAgentStatus(ctx: Context, agent: Agent, status: Agent['status']): void {
+  Object.assign(agent, { status })
+  agentEvents(ctx, agent).emit('agent/status', { status })
 }
 
 async function setup(configured = blueprint()): Promise<Harness> {
@@ -646,7 +652,7 @@ describe('ExpertRuntime', () => {
     expect(subagentDrift.ctx.teamRuns.getRun(subagentDrift.lead).members[0]).toMatchObject({ phase: 'failed' })
   })
 
-  it('enforces own-turn and absolute-time budgets before model entry and revokes TeamRun membership', async () => {
+  it('enforces own-turn budgets before model entry and revokes TeamRun membership', async () => {
     const harness = await setup(blueprint({ budget: { maxTurns: 1, maxTokens: 2_048, timeoutMs: 60_000 } }))
     const result = await provision(harness)
     const child = harness.ctx.agents.get(result.member.sessionId)
@@ -703,7 +709,7 @@ describe('ExpertRuntime', () => {
     )).rejects.toMatchObject({ code: 'BLUEPRINT_REVISION_MISMATCH' })
   })
 
-  it('settles the roster and cancels the child when the absolute deadline expires', async () => {
+  it('does not spend the execution timeout while an expert waits idle for the serial baton', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
     const harness = await setup(blueprint({ budget: { maxTurns: 2, maxTokens: 2_048, timeoutMs: 50 } }))
@@ -711,8 +717,36 @@ describe('ExpertRuntime', () => {
     const child = harness.ctx.agents.get(result.member.sessionId)
     if (child === undefined) throw new Error('child missing')
     const cancel = vi.spyOn(child, 'cancel')
+
+    await vi.advanceTimersByTimeAsync(500)
+    expect(cancel).not.toHaveBeenCalled()
+    expect(harness.ctx.teamRuns.getRun(harness.lead).members[0]).toMatchObject({ phase: 'active' })
+
+    const run = await harness.ctx.teamRuns.changePhase(harness.lead, {
+      expectedRevision: harness.ctx.teamRuns.getRun(harness.lead).revision,
+      phase: 'active',
+    })
+    expect(run.phase).toBe('active')
+    await expect(harness.ctx.expertRuntime.followup(
+      harness.lead,
+      result.member.sessionId,
+      [{ type: 'text', text: 'Review the next serialized handoff' }],
+      { source: { kind: 'user' }, signal: new AbortController().signal },
+    )).resolves.toBeDefined()
+    expect(harness.ctx.teamRuns.getRun(harness.lead).members[0]).toMatchObject({ phase: 'active' })
+  })
+
+  it('settles the roster and cancels the child when its active execution window expires', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'))
+    const harness = await setup(blueprint({ budget: { maxTurns: 2, maxTokens: 2_048, timeoutMs: 50 } }))
+    const result = await provision(harness)
+    const child = harness.ctx.agents.get(result.member.sessionId)
+    if (child === undefined) throw new Error('child missing')
+    const cancel = vi.spyOn(child, 'cancel')
+    emitAgentStatus(harness.ctx, child, 'running')
     await vi.advanceTimersByTimeAsync(51)
-    expect(cancel).toHaveBeenCalledWith({ kind: 'hook', reason: 'expert execution deadline reached' })
+    expect(cancel).toHaveBeenCalledWith({ kind: 'hook', reason: 'expert active execution deadline reached' })
     expect(harness.ctx.teamRuns.getRun(harness.lead).members[0]).toMatchObject({
       phase: 'failed', failure: { code: 'TEAM_CANCELLED' },
     })
@@ -727,6 +761,7 @@ describe('ExpertRuntime', () => {
     const child = harness.ctx.agents.get(result.member.sessionId)
     if (child === undefined) throw new Error('child missing')
     const cancel = vi.spyOn(child, 'cancel')
+    emitAgentStatus(harness.ctx, child, 'running')
     let run = harness.ctx.teamRuns.getRun(harness.lead)
     run = await harness.ctx.teamRuns.changePhase(harness.lead, { expectedRevision: run.revision, phase: 'active' })
     run = await harness.ctx.teamRuns.changePhase(harness.lead, { expectedRevision: run.revision, phase: 'completing' })

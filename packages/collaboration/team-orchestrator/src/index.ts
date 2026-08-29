@@ -36,6 +36,7 @@ import type {
   Config,
   CreateTeamOrchestrationRequest,
   PlannedExpertSkillDiscovery,
+  PlannedTeamWorkstream,
   ReplaceTeamExpertRequest,
   TeamCharterEventData,
   TeamOrchestrationCommand,
@@ -446,6 +447,10 @@ export class TeamOrchestrator extends Service {
           } else {
             await this.ctx.expertRuntime.recoverProvisioning(lead, existing.attemptId, formationSignal)
           }
+          run = this.ctx.teamRuns.getRun(lead)
+        }
+        if (run.phase === 'provisioning') {
+          await this.materializeTaskAssignments(lead, state.charter.charter.taskDag)
           run = this.ctx.teamRuns.getRun(lead)
         }
         run = await this.advance(lead, 'active')
@@ -968,29 +973,9 @@ export class TeamOrchestrator extends Service {
    */
   private async materializeTaskDag(
     lead: Agent,
-    taskDag: readonly import('./types.ts').TeamWorkstream[],
+    taskDag: readonly PlannedTeamWorkstream[],
   ): Promise<void> {
-    const byId = new Map(taskDag.map(value => [value.id, value]))
-    const visiting = new Set<string>()
-    const visited = new Set<string>()
-    const ordered: import('./types.ts').TeamWorkstream[] = []
-    const visit = (id: string): void => {
-      if (visited.has(id)) return
-      if (visiting.has(id)) {
-        throw new TeamRunError('committed Team Charter task DAG contains a cycle', 'TEAM_TASK_DEPENDENCY_CYCLE')
-      }
-      const workstream = byId.get(id)
-      if (workstream === undefined) {
-        throw new TeamRunError(`committed Team Charter blocker "${id}" is missing`, 'TEAM_TASK_NOT_FOUND')
-      }
-      visiting.add(id)
-      for (const blocker of workstream.blockedBy) visit(blocker)
-      visiting.delete(id)
-      visited.add(id)
-      ordered.push(workstream)
-    }
-    for (const workstream of taskDag) visit(workstream.id)
-
+    const ordered = this.orderedTaskDag(taskDag)
     const ids = new Map(ordered.map((value, index) => [value.id, TeamTaskId(`task-${String(index + 1)}`)]))
     const expected = ordered.map((value, index) => ({
       id: TeamTaskId(`task-${String(index + 1)}`),
@@ -1011,11 +996,9 @@ export class TeamOrchestrator extends Service {
       const planned = expected[index]
       if (planned === undefined
         || task.id !== planned.id
-        || task.revision !== 1
         || task.subject !== planned.subject
         || task.description !== planned.description
-        || task.status !== 'pending'
-        || task.owner !== undefined
+        || task.status === 'deleted'
         || digestJson(task.blockedBy) !== digestJson(planned.blockedBy)
         || digestJson(task.resourceScopes) !== digestJson(planned.resourceScopes)) {
         throw new TeamRunError(
@@ -1036,6 +1019,67 @@ export class TeamOrchestrator extends Service {
       if (created.id !== planned.id || created.revision !== 1) {
         throw new TeamRunError(
           `materialized TeamRun task identity diverges at position ${String(index + 1)}`,
+          'TEAM_INVALID_TRANSITION',
+        )
+      }
+    }
+  }
+
+  /** Return one stable dependency-first view of the immutable execution plan. */
+  private orderedTaskDag(taskDag: readonly PlannedTeamWorkstream[]): PlannedTeamWorkstream[] {
+    const byId = new Map(taskDag.map(value => [value.id, value]))
+    const visiting = new Set<string>()
+    const visited = new Set<string>()
+    const ordered: PlannedTeamWorkstream[] = []
+    const visit = (id: string): void => {
+      if (visited.has(id)) return
+      if (visiting.has(id)) {
+        throw new TeamRunError('committed Team Charter task DAG contains a cycle', 'TEAM_TASK_DEPENDENCY_CYCLE')
+      }
+      const workstream = byId.get(id)
+      if (workstream === undefined) {
+        throw new TeamRunError(`committed Team Charter blocker "${id}" is missing`, 'TEAM_TASK_NOT_FOUND')
+      }
+      visiting.add(id)
+      for (const blocker of workstream.blockedBy) visit(blocker)
+      visiting.delete(id)
+      visited.add(id)
+      ordered.push(workstream)
+    }
+    for (const workstream of taskDag) visit(workstream.id)
+    return ordered
+  }
+
+  /** Bind every immutable plan step to its provisioned expert without starting blocked work. */
+  private async materializeTaskAssignments(
+    lead: Agent,
+    taskDag: readonly PlannedTeamWorkstream[],
+  ): Promise<void> {
+    const ordered = this.orderedTaskDag(taskDag)
+    for (const [index, planned] of ordered.entries()) {
+      if (planned.assigneeSlotId === undefined) continue
+      const task = this.ctx.teamRuns.listTasks(lead)[index]
+      if (task === undefined) throw new Error(`materialized task ${String(index + 1)} is missing`)
+      const member = this.ctx.teamRuns.getRun(lead).members.find(candidate =>
+        candidate.phase === 'active' && String(candidate.protocolSlotId) === String(planned.assigneeSlotId))
+      if (member === undefined) {
+        throw new TeamRunError(
+          `planned task "${planned.id}" has no active expert in slot "${planned.assigneeSlotId}"`,
+          'FORMATION_FAILED',
+        )
+      }
+      if (task.owner === undefined) {
+        await this.ctx.teamRuns.updateTask(lead, {
+          taskId: task.id,
+          expectedRevision: task.revision,
+          action: 'assign',
+          owner: member.name,
+        })
+        continue
+      }
+      if (task.owner.role !== 'expert' || task.owner.memberId !== member.id) {
+        throw new TeamRunError(
+          `materialized task "${task.id}" diverges from planned expert slot "${planned.assigneeSlotId}"`,
           'TEAM_INVALID_TRANSITION',
         )
       }

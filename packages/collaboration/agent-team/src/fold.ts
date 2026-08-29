@@ -1,6 +1,11 @@
 /** Strict event replay and projection for the stable TeamRun domain. */
 
 import type { SessionEvent, SessionId } from '@deepseek-ai/dsh-session'
+import {
+  expertsMissingAcceptedContribution,
+  hasVerifiedCompletionReview,
+  tasksMissingAcceptedOwnerEvidence,
+} from './completion-evidence.ts'
 import { expertName, requiredText, resourceScope, resourceScopesOverlap } from './validation.ts'
 import { TeamRunId } from './ids.ts'
 import { validatePlannedExperts, validatePolicy } from './policy.ts'
@@ -288,7 +293,6 @@ function applyTask(state: TeamRunFoldState, task: TeamTaskSnapshot): void {
     || (prior !== undefined && task.revision !== prior.revision + 1)) {
     throw new Error(`team task "${task.id}" revision is not contiguous`)
   }
-  if (task.status === 'pending' && task.owner !== undefined) throw new Error('a pending task cannot retain an owner')
   if ((task.status === 'in_progress' || task.status === 'completed') && task.owner === undefined) {
     throw new Error(`${task.status} task "${task.id}" requires an owner`)
   }
@@ -758,8 +762,6 @@ function controllerSnapshot(state: TeamRunFoldState): TeamControllerSnapshot {
     .filter(decision => decision.outcome === 'reassign' || decision.outcome === 'rework' || decision.outcome === 'replan')
     .map(decision => decision.id)
   const lastAction = [...state.decisions.values()].at(-1)?.outcome
-  const hasCompletionRequest = [...state.messages.values()].some(message => message.kind === 'completion_request')
-  const hasReview = [...state.messages.values()].some(message => message.kind === 'review')
   const acceptedCoverage = current.every(task => [...state.decisions.values()].some(decision =>
     decision.outcome === 'accepted'
     && decision.taskIds.includes(task.id)
@@ -767,14 +769,19 @@ function controllerSnapshot(state: TeamRunFoldState): TeamControllerSnapshot {
       const artifact = state.artifacts.get(artifactId)
       return artifact?.status === 'accepted' && artifact.taskIds.includes(task.id)
     })))
+  const collaborationEvidenceReady = state.protocol === undefined
+    ? current.every(task => task.status === 'completed')
+      && [...state.messages.values()].some(message => message.kind === 'completion_request')
+      && [...state.messages.values()].some(message => message.kind === 'review')
+    : tasksMissingAcceptedOwnerEvidence(state).length === 0
+      && expertsMissingAcceptedContribution(state).length === 0
+      && hasVerifiedCompletionReview(state)
   const ready = current.length > 0
-    && current.every(task => task.status === 'completed')
+    && collaborationEvidenceReady
     && current.every(task => [...state.artifacts.values()].some(artifact =>
       artifact.status === 'accepted' && artifact.taskIds.includes(task.id)))
     && state.qualityGates.size > 0
     && [...state.qualityGates.values()].every(gate => gate.status === 'passed')
-    && hasCompletionRequest
-    && hasReview
     && acceptedCoverage
   return {
     health: ready

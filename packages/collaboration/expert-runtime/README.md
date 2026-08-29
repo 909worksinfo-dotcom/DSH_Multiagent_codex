@@ -20,7 +20,7 @@ The selected provider must implement continuable creation. `maxInitialPromptByte
 
 `provision()` resolves the requested immutable blueprint and validates its assignment before consuming an attempt. It computes the effective provider, model, and output-token ceiling, including Lead route inheritance, and hashes runtime-derived composition with the catalog digest. The sequence is P1 `beginExpertProvision()`, append and flush the Lead binding, create and publish the child with the exact preset/persona/tool policy, append the child descriptor during unpublished setup, P1 `succeedExpertProvision()`, then admit the first prompt.
 
-Any provider, setup, activation-hook, or prompt-admission failure drains the child first and changes the immutable P1 attempt to `failed`. P1 compare-and-set settlement retries across unrelated concurrent TeamRun writes. Missing capability, descriptor drift, turn exhaustion, and deadline expiry remain structured public failures; they never silently weaken the team.
+Any provider, setup, activation-hook, or prompt-admission failure drains the child first and changes the immutable P1 attempt to `failed`. P1 compare-and-set settlement retries across unrelated concurrent TeamRun writes. Missing capability, descriptor drift, turn exhaustion, and active-execution deadline expiry remain structured public failures; they never silently weaken the team.
 
 The integration suite also mounts the real Loader, Agent preset roster, ExpertCatalog, TeamRun, JSONL persistence, SubagentRuntime, `spawn` in-process provider, and AgentLoop. It verifies that the real child reaches the model with only its blueprint-selected preset tool, then reloads both P2 descriptors and the answer from persistence.
 
@@ -34,7 +34,7 @@ Cold activation uses independent reference-counted authorization tokens. Generic
 
 ## Execution budgets
 
-The blueprint's effective `maxTokens` is passed into continuable creation and retained by the subagent v3 descriptor for cold resume. `maxTurns` counts only this child's own `turn/start` events after its expert descriptor, so inherited fork turns do not consume the budget. The absolute persisted deadline installs a timer on fresh creation, cold publication, and plugin reload; the pre-step hook also rechecks it immediately before model entry.
+The blueprint's effective `maxTokens` is passed into continuable creation and retained by the subagent v3 descriptor for cold resume. `maxTurns` counts only this child's own `turn/start` events after its expert descriptor, so inherited fork turns do not consume the budget. The persisted absolute deadline bounds only initial prompt admission. Each later `idle` to `running` interval receives a fresh wall-clock window from the blueprint's re-resolved `timeoutMs`; returning to `idle` clears that timer, so waiting for the serialized collaboration baton cannot revoke an expert. The pre-step hook restores a missing active timer after runtime reload and rechecks it immediately before model entry.
 
 ## Required-on-read invariant
 

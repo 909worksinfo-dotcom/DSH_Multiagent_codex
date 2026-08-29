@@ -43,6 +43,8 @@ The policy tells every member to read authoritative protocol state before acting
 
 `collaboration_send` accepts typed references only where the domain relation is legal. A challenge and response require the same explicit non-default dispute `thread_id`, one explicit target, and the same `challenge_id`; an ordinary message may default to `main`. Its result retains stable message, event, run, thread, cursor, author, target, reference, time, kind, and visibility fields, but omits the content the caller just supplied. This bounds duplicate model context even when the domain permits a large public record
 
+The sequential router advances only after the current sender becomes idle. It rereads the authoritative run, summarizes relevant context, plans one next action, selects exactly one eligible recipient, and emits public content as structured context-summary, next-step, recipient-selection, and message fields. A `task` route must reference a ready Charter task and target its preassigned active expert, so downstream stages cannot start before their blockers complete. Those fields support recovery and readable projection without a presentation-only handoff prefix. Recovery recognizes the structured fields and the older stored form, so immutable historical runs remain resumable while newly generated messages contain no legacy marker
+
 `collaboration_task_list` validates a non-negative safe-integer cursor and a limit from one through 100 before slicing the authoritative creation-order list. Invalid bounds return the stable `TEAM_INVALID_ARGUMENT` code. Other command validation and authorization errors preserve the domain's stable taxonomy.
 
 ## Model Experience
@@ -65,5 +67,4 @@ The fixed policy and schemas remain prefix-stable while the plugin generation is
 
 - **No formation tools** — P2 owns real child-Agent creation, provider settlement, skill mounting, and plugin binding
 - **No autonomous planner** — P3 owns Task Profiler, Team Planner, complexity selection, and Team Charter generation
-- **No automatic peer delivery** — a public record is auditable TeamRun state, not an inbox injection or wakeup
 - **Prompt policy is not confinement** — it guides public collaboration but cannot prevent other tools or external processes from exposing private data

@@ -98,7 +98,7 @@ export interface ExpertBindingDescriptor {
     readonly maxTurns: number
     /** Effective per-request output-token ceiling. */
     readonly maxTokens: number
-    /** Absolute Unix epoch millisecond deadline. */
+    /** Absolute Unix epoch deadline for initial expert prompt admission. */
     readonly deadlineAt: number
   }
 }

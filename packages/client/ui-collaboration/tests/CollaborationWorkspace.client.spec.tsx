@@ -99,7 +99,12 @@ describe('CollaborationWorkspace', () => {
   })
 
   it('shows the task ledger and Lead updates only, with completed tasks struck through', async () => {
-    const completed = createDemoRuns().find(run => run.status === 'completed')!
+    const base = createDemoRuns().find(run => run.status === 'completed')!
+    const longDescription = '这是一段用于验证任务清单摘要长度的任务描述，需要保留最重要的信息并确保最终展示文本严格不超过六十个字符，同时不修改权威任务数据'
+    const completed = {
+      ...base,
+      tasks: base.tasks.map((task, index) => index === 0 ? { ...task, description: longDescription } : task),
+    }
     const port = createCollaborationDemoPort([completed])
     const value = makeProps({ port, start: async () => completed.id })
     render(<CollaborationWorkspace {...value.props} />)
@@ -109,6 +114,25 @@ describe('CollaborationWorkspace', () => {
     await screen.findByText(zh['workspace.delivery.title'])
     expect(document.querySelectorAll('[data-collaboration-center-task]')).toHaveLength(4)
     expect(document.querySelectorAll('[data-collaboration-center-task] del')).toHaveLength(4)
+    expect(document.querySelectorAll('[data-execution-stage]')).toHaveLength(2)
+    expect(document.querySelector('[data-execution-stage="1"]')?.getAttribute('data-mode')).toBe('parallel')
+    expect(document.querySelector('[data-execution-stage="2"]')?.getAttribute('data-mode')).toBe('serial')
+    const taskRows = [...document.querySelectorAll('[data-collaboration-center-task]')]
+    expect(taskRows.map(row => row.getAttribute('data-task-mode'))).toEqual([
+      'parallel', 'parallel', 'parallel', 'serial',
+    ])
+    const firstTask = document.querySelector('[data-collaboration-center-task="task-1"]')
+    const finalTask = document.querySelector('[data-collaboration-center-task="task-4"]')
+    expect(firstTask?.querySelector('[data-task-heading] [data-task-status]')?.textContent).toBe('已完成')
+    expect(firstTask?.querySelector('[data-task-mode-label]')?.textContent).toBe('并行任务')
+    expect(firstTask?.querySelector('[data-task-agent]')?.textContent).toBe('执行 Agent：产品策略专家')
+    expect(finalTask?.querySelector('[data-task-mode-label]')?.textContent).toBe('串行任务')
+    expect(finalTask?.querySelector('[data-task-agent]')?.textContent).toBe('执行 Agent：反方评审专家')
+    const descriptions = [...document.querySelectorAll('[data-task-description]')].map(node => node.textContent ?? '')
+    expect(descriptions).toHaveLength(4)
+    expect(descriptions.every(description => Array.from(description).length <= 60)).toBe(true)
+    expect(descriptions[0]?.endsWith('…')).toBe(true)
+    expect(base.tasks[0]?.description).not.toBe(longDescription)
     expect(document.querySelectorAll('[data-center-lead-event]')).toHaveLength(2)
     expect(screen.getByText('裁决采用统一指标，并保留反方意见作为验收资产')).toBeTruthy()
     expect(screen.queryByText('建议首批聚焦调研分析、产品方案与软件开发三个通用领域')).toBeNull()

@@ -35,6 +35,13 @@ const workstream = z.object({
   requiredCapabilities: z.array(nonEmpty),
   resourceScopes: z.array(nonEmpty),
 }).strict()
+const plannedWorkstream = workstream.extend({ assigneeSlotId: slotId.optional() }).strict()
+const executionStage = z.object({
+  id: nonEmpty,
+  order: z.number().int().positive(),
+  mode: z.enum(['serial', 'parallel']),
+  workstreamIds: z.array(nonEmpty).min(1),
+}).strict()
 const budget = z.object({
   maxTurns: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
   maxTokens: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
@@ -63,6 +70,7 @@ const profile = z.object({
   objective: nonEmpty,
   successCriteria: z.array(nonEmpty).min(1),
   workstreams: z.array(workstream).min(1),
+  workstreamSource: z.enum(['explicit', 'inferred']).optional(),
   riskSignals: z.array(nonEmpty),
   context: z.record(z.string(), nonEmpty),
   complexity,
@@ -102,14 +110,16 @@ const plannedExpert = z.object({
 const plan = z.object({
   topology,
   roster: z.array(plannedExpert).min(1).max(8),
-  taskDag: z.array(workstream).min(1),
+  taskDag: z.array(plannedWorkstream).min(1),
+  stages: z.array(executionStage).min(1).optional(),
 }).strict()
 const charter = z.object({
   objective: nonEmpty,
   successCriteria: z.array(nonEmpty).min(1),
   topology,
   roster: z.array(z.object({ slotId, name: nonEmpty, role: nonEmpty, blueprint: ref }).strict()).min(1).max(8),
-  taskDag: z.array(workstream).min(1),
+  taskDag: z.array(plannedWorkstream).min(1),
+  stages: z.array(executionStage).min(1).optional(),
   communication: z.object({
     maxChallengeRounds: z.number().int().positive(),
     maxMessagesPerExpert: z.number().int().positive(),

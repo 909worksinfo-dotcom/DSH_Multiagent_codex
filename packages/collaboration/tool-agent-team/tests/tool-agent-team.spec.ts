@@ -166,10 +166,13 @@ describe('stable TeamRun model tools', () => {
     })
     const assembled = await assembly(ctx, lead)
     const prompt = renderPrompt(assembled)
-    expect(prompt).toContain('Every collaboration_send record is public')
+    expect(prompt).toContain('sequential collaboration baton')
+    expect(prompt).toContain('exactly one best-suited recipient')
+    expect(prompt).toContain('delivers the next turn only after the sender is idle')
     expect(prompt).toContain('same explicit dispute thread_id')
     expect(prompt).toContain('answer an open round before starting another')
-    expect(prompt).toContain('Every active expert must publish at least one concise public')
+    expect(prompt).toContain('Every active expert must finish an artifact')
+    expect(prompt).toContain('never describe a review-state artifact as accepted or complete')
     expect(prompt).toContain('call collaboration_complete before returning the unified final response')
     expect(prompt).toContain('Ordinary messages must omit challenge_id')
     expect(prompt).toContain('refresh and correct the call instead of bypassing public collaboration')
@@ -276,7 +279,7 @@ describe('stable TeamRun model tools', () => {
       parameters: {},
       output: {
         schema: { type: 'string' },
-        render: (_args, value) => [{ type: 'text', text: String(value) }],
+        render: (_args, value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }],
       },
       execute: bash,
     })
@@ -314,10 +317,14 @@ describe('stable TeamRun model tools', () => {
       description: 'Receive a typed public message reference',
     })
     const task = JSON.parse(text(created)) as { id: string }
-    const content = `large-caller-owned-content-${'x'.repeat(4_096)}`
+    const content = `large-caller-owned-content-${'x'.repeat(1_024)}`
     const result = await execute(ctx, lead, 'collaboration_send', {
       kind: 'proposal',
+      targets: ['expert-one'],
       task_id: task.id,
+      context_summary: 'The task is ready for one focused proposal review',
+      next_action: 'Review the proposal and identify the strongest correction',
+      selection_reason: 'expert-one is the only active protocol-allowed reviewer',
       content,
     })
     expect(result.isError).toBe(false)
@@ -327,7 +334,7 @@ describe('stable TeamRun model tools', () => {
       threadId: MAIN_TEAM_THREAD_ID,
       kind: 'proposal',
       author: 'lead',
-      targets: [],
+      targets: ['expert-one'],
       references: {
         taskId: task.id,
       },
@@ -340,6 +347,17 @@ describe('stable TeamRun model tools', () => {
     expect(receipt).not.toHaveProperty('content')
     expect(text(result)).not.toContain(content)
 
+    expect(result.concludesTurn).toBe(true)
+    await vi.waitFor(() => { expect(followup).toHaveBeenCalledOnce() })
+    const call = followup.mock.calls[0]
+    expect(call?.[0]).toBe(lead)
+    expect(call?.[1]).toBe(SessionId('tool-expert-one'))
+    expect(call?.[2][0]?.text).toContain('Next action: Review the proposal')
+    expect(call?.[2][0]?.text).not.toContain('Sequential collaboration handoff')
+    const published = ctx.teamRuns.getRun(lead).messages.at(-1)
+    expect(published?.content).toMatch(/^Context summary:/u)
+    expect(published?.content).not.toContain('Sequential collaboration handoff')
+
     const normalizedBlanks = await execute(ctx, lead, 'collaboration_send', {
       kind: 'proposal',
       thread_id: '',
@@ -348,49 +366,114 @@ describe('stable TeamRun model tools', () => {
       challenge_id: '',
       decision_id: '',
       artifact_id: '',
+      context_summary: 'Context',
+      next_action: 'Action',
+      selection_reason: 'Reason',
       content: 'Blank optional model fields must be omitted',
     })
-    expect(normalizedBlanks.isError).toBe(false)
-    expect(JSON.parse(text(normalizedBlanks))).toMatchObject({
-      threadId: MAIN_TEAM_THREAD_ID,
-      kind: 'proposal',
-      targets: [],
-      references: {},
-    })
-
-    const delegated = await execute(ctx, lead, 'collaboration_followup', {
-      target: 'expert-one',
-      task_id: task.id,
-      content: 'Review the proposal and publish your response',
-    })
-    expect(delegated.isError).toBe(false)
-    expect(JSON.parse(text(delegated))).toMatchObject({
-      kind: 'task',
-      author: 'lead',
-      targets: ['expert-one'],
-      references: { taskId: task.id },
-    })
-    expect(followup).toHaveBeenCalledOnce()
-    const call = followup.mock.calls[0]
-    expect(call?.[0]).toBe(lead)
-    expect(call?.[1]).toBe(SessionId('tool-expert-one'))
-    expect(call?.[2][0]?.type).toBe('text')
-    expect(call?.[2][0]?.text).toContain('Review the proposal')
-    expect(call?.[3]).toEqual({ source: { kind: 'plugin', plugin: 'tool-agent-team' }, signal: SIGNAL })
+    expect(normalizedBlanks.isError).toBe(true)
+    expect(text(normalizedBlanks)).toContain('Another member owns the collaboration baton')
 
     const forgedChallengeReference = await execute(ctx, lead, 'collaboration_send', {
       kind: 'proposal',
+      targets: ['expert-one'],
       challenge_id: 'challenge-one',
+      context_summary: 'Context',
+      next_action: 'Action',
+      selection_reason: 'Reason',
       content: 'proposal cannot forge a challenge relationship',
     })
     expect(forgedChallengeReference.isError).toBe(true)
-    expect(text(forgedChallengeReference)).toContain('proposal cannot reference a challenge')
+    expect(text(forgedChallengeReference)).toContain('Another member owns the collaboration baton')
 
     const privateMessage = await execute(ctx, lead, 'collaboration_send', {
       kind: 'private_reasoning',
+      targets: ['expert-one'],
+      context_summary: 'Context',
+      next_action: 'Action',
+      selection_reason: 'Reason',
       content: 'must be rejected before the TeamRun service',
     })
     expect(privateMessage.isError).toBe(true)
+  })
+
+  it('holds one routed message until the sender is idle and rejects a second route in the same turn', async () => {
+    const { ctx, lead, followup } = await setup()
+    await activateSimple(ctx, lead)
+    const task = await ctx.teamRuns.createTask(lead, {
+      subject: 'Focused finding', description: 'Produce one bounded expert finding',
+    })
+    const assigned = await ctx.teamRuns.updateTask(lead, {
+      taskId: task.id, expectedRevision: task.revision, action: 'assign', owner: 'expert-one',
+    })
+    let status: Agent['status'] = 'running'
+    Object.defineProperty(lead, 'status', { configurable: true, get: () => status })
+
+    const routed = await execute(ctx, lead, 'collaboration_followup', {
+      kind: 'task',
+      target: 'expert-one',
+      task_id: assigned.id,
+      context_summary: 'The TeamRun is active and no earlier routed turn is outstanding',
+      next_action: 'Produce one bounded expert finding',
+      selection_reason: 'expert-one is the only active expert and owns this responsibility',
+      content: 'Investigate the assigned question and return one evidence-backed finding',
+    })
+    expect(routed.isError).toBe(false)
+    expect(routed.concludesTurn).toBe(true)
+    await Promise.resolve()
+    expect(followup).not.toHaveBeenCalled()
+
+    const duplicate = await execute(ctx, lead, 'collaboration_followup', {
+      kind: 'task',
+      target: 'expert-one',
+      context_summary: 'Attempt a duplicate route',
+      next_action: 'Must not run',
+      selection_reason: 'Must not be evaluated',
+      content: 'This second message must be rejected',
+    })
+    expect(duplicate.isError).toBe(true)
+    expect(text(duplicate)).toContain('Another member owns the collaboration baton')
+
+    status = 'idle'
+    ctx.emit('agent/status', { agent: lead, status })
+    await vi.waitFor(() => { expect(followup).toHaveBeenCalledOnce() })
+  })
+
+  it('rejects a planned downstream task until every earlier-stage blocker completes', async () => {
+    const { ctx, lead } = await setup()
+    await activateSimple(ctx, lead)
+    const blocker = await ctx.teamRuns.createTask(lead, {
+      subject: 'Evidence', description: 'Complete the evidence stage',
+    })
+    const downstream = await ctx.teamRuns.createTask(lead, {
+      subject: 'Synthesis', description: 'Wait for the evidence stage', blockedBy: [blocker.id],
+    })
+    const assignedBlocker = await ctx.teamRuns.updateTask(lead, {
+      taskId: blocker.id, expectedRevision: blocker.revision, action: 'assign', owner: 'expert-one',
+    })
+    const assignedDownstream = await ctx.teamRuns.updateTask(lead, {
+      taskId: downstream.id, expectedRevision: downstream.revision, action: 'assign', owner: 'expert-one',
+    })
+
+    const rejected = await execute(ctx, lead, 'collaboration_followup', {
+      kind: 'task', target: 'expert-one', task_id: assignedDownstream.id,
+      context_summary: 'The synthesis is planned after evidence',
+      next_action: 'Start synthesis before evidence is complete',
+      selection_reason: 'The planned owner is expert-one',
+      content: 'Attempt to skip the earlier stage',
+    })
+    expect(rejected.isError).toBe(true)
+    if (rejected.isError) expect(rejected.error.info?.code).toBe('TEAM_TASK_BLOCKED')
+    expect(ctx.teamRuns.getRun(lead).messages).toHaveLength(0)
+
+    const accepted = await execute(ctx, lead, 'collaboration_followup', {
+      kind: 'task', target: 'expert-one', task_id: assignedBlocker.id,
+      context_summary: 'The evidence task is the first ready stage',
+      next_action: 'Complete the evidence stage',
+      selection_reason: 'expert-one is the preassigned owner',
+      content: 'Execute the ready evidence task',
+    })
+    expect(accepted.isError).toBe(false)
   })
 
   it('lets only the Lead atomically deliver after task completion and public review', async () => {
@@ -405,20 +488,36 @@ describe('stable TeamRun model tools', () => {
       subject: 'Final result', description: 'Complete and review the result',
     })
     const task = JSON.parse(text(created)) as { id: string; revision: number }
-    const claimed = await execute(ctx, lead, 'collaboration_task_update', {
-      task_id: task.id, expected_revision: task.revision, action: 'claim',
+    const claimed = await ctx.teamRuns.updateTask(expert, {
+      taskId: TeamTaskId(task.id), expectedRevision: task.revision, action: 'claim',
     })
-    const claimedTask = JSON.parse(text(claimed)) as { revision: number }
-    await execute(ctx, lead, 'collaboration_task_update', {
-      task_id: task.id, expected_revision: claimedTask.revision, action: 'complete',
-    })
-    const artifactResult = await execute(ctx, lead, 'collaboration_artifact_write', {
-      expected_version: 0,
+    const reviewArtifact = await ctx.teamRuns.writeArtifact(expert, {
+      expectedVersion: 0,
       kind: 'document',
       title: 'Final artifact',
       body: 'Final artifact body',
-      media_type: 'text/markdown',
-      task_ids: [task.id],
+      mediaType: 'text/markdown',
+      taskIds: [TeamTaskId(task.id)],
+      status: 'review',
+    })
+    await ctx.teamRuns.updateTask(expert, {
+      taskId: TeamTaskId(task.id), expectedRevision: claimed.revision, action: 'complete',
+    })
+    await ctx.teamRuns.publishMessage(expert, {
+      kind: 'handoff',
+      threadId: MAIN_TEAM_THREAD_ID,
+      targets: ['lead'],
+      references: { taskId: TeamTaskId(task.id), artifactId: reviewArtifact.id },
+      content: 'The assigned expert completed and routed the artifact.',
+    })
+    const artifactResult = await execute(ctx, lead, 'collaboration_artifact_write', {
+      artifact_id: reviewArtifact.id,
+      expected_version: reviewArtifact.version,
+      kind: reviewArtifact.kind,
+      title: reviewArtifact.title,
+      body: reviewArtifact.body,
+      media_type: reviewArtifact.mediaType,
+      task_ids: reviewArtifact.taskIds,
       status: 'accepted',
     })
     const artifact = JSON.parse(text(artifactResult)) as { id: string }
@@ -432,11 +531,12 @@ describe('stable TeamRun model tools', () => {
       task_id: task.id,
       artifact_id: artifact.id,
     })
-    await execute(ctx, lead, 'collaboration_send', {
-      kind: 'completion_request', task_id: task.id, artifact_id: artifact.id, content: 'Please complete',
-    })
-    await execute(ctx, lead, 'collaboration_send', {
-      kind: 'review', task_id: task.id, artifact_id: artifact.id, content: 'Reviewed and accepted',
+    await ctx.teamRuns.publishMessage(lead, {
+      kind: 'completion_request',
+      threadId: MAIN_TEAM_THREAD_ID,
+      targets: ['expert-one'],
+      references: { taskId: TeamTaskId(task.id), artifactId: TeamArtifactId(artifact.id) },
+      content: 'Please complete',
     })
     await execute(ctx, lead, 'collaboration_decision_write', {
       expected_version: 0,
@@ -452,11 +552,12 @@ describe('stable TeamRun model tools', () => {
       task_id: task.id, artifact_id: artifact.id, content: 'Must wait for the expert',
     })
     expect(rejected.isError).toBe(true)
-    expect(text(rejected)).toContain('every active expert requires a public contribution')
+    expect(text(rejected)).toContain('later artifact-backed review')
 
     await ctx.teamRuns.publishMessage(expert, {
       kind: 'review',
       threadId: MAIN_TEAM_THREAD_ID,
+      targets: ['lead'],
       references: { taskId: TeamTaskId(task.id), artifactId: TeamArtifactId(artifact.id) },
       content: 'Expert review confirms the result is ready',
     })
@@ -473,7 +574,7 @@ describe('stable TeamRun model tools', () => {
   })
 
   it('installs for a live active expert and revokes tools when that roster identity fails', async () => {
-    const { ctx, lead } = await setup()
+    const { ctx, lead, followup } = await setup()
     let run = await ctx.teamRuns.createRun(lead, {
       objective: 'Verify active expert scoped authority',
       complexity: 'simple',
@@ -509,12 +610,40 @@ describe('stable TeamRun model tools', () => {
       expect(names).toEqual(TOOL_NAMES)
     })
     expect(renderPrompt(await assembly(ctx, expert))).toContain('Your TeamRun role is expert; your public name is expert-one')
+    const leadWake = vi.spyOn(lead, 'followup').mockImplementation(() => {})
+
+    const task = await ctx.teamRuns.createTask(lead, {
+      subject: 'Scoped collaboration authority', description: 'Verify the scoped collaboration authority',
+    })
+    const assigned = await ctx.teamRuns.updateTask(lead, {
+      taskId: task.id, expectedRevision: task.revision, action: 'assign', owner: 'expert-one',
+    })
+    const delegated = await execute(ctx, lead, 'collaboration_followup', {
+      kind: 'task',
+      target: 'expert-one',
+      task_id: assigned.id,
+      context_summary: 'The expert scope is active and ready for verification',
+      next_action: 'Publish one verification result back to the Lead',
+      selection_reason: 'expert-one owns the active verification responsibility',
+      content: 'Verify the scoped collaboration authority',
+    })
+    expect(delegated.isError).toBe(false)
+    await vi.waitFor(() => { expect(followup).toHaveBeenCalledOnce() })
 
     const sent = await execute(ctx, expert, 'collaboration_send', {
       kind: 'inform',
+      targets: ['lead'],
+      context_summary: 'The scoped collaboration tools are present and executable',
+      next_action: 'Review the expert verification result',
+      selection_reason: 'The Lead owns final verification and arbitration',
       content: 'Public expert result',
     })
     expect(JSON.parse(text(sent))).toMatchObject({ author: 'expert-one', kind: 'inform', visibility: 'public' })
+    await vi.waitFor(() => { expect(leadWake).toHaveBeenCalledOnce() })
+    const leadContent = leadWake.mock.calls[0]?.[0].content[0]
+    expect(leadContent?.type).toBe('text')
+    if (leadContent?.type !== 'text') throw new Error('Lead wake must carry one text handoff')
+    expect(leadContent.text).toContain('Why Lead: The Lead owns final verification')
 
     const unrostered = (await ctx.agents.create({
       sessionId: SessionId('unrostered-child'),

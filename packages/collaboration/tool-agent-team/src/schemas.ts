@@ -59,7 +59,7 @@ export const TEAM_RUN_PUBLIC_STATUSES = [
 
 /** Exact task actions accepted by the model-facing compare-and-set command. */
 export const TEAM_TASK_ACTIONS = [
-  'claim', 'release', 'edit', 'set_dependencies', 'complete', 'reopen', 'reassign', 'delete',
+  'assign', 'claim', 'release', 'edit', 'set_dependencies', 'complete', 'reopen', 'reassign', 'delete',
 ] as const satisfies readonly TeamTaskAction[]
 
 /** Product artifact kinds accepted by write tools. */

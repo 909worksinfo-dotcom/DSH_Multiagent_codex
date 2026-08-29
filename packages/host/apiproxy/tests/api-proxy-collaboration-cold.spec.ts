@@ -162,7 +162,8 @@ function collaborationFixture(id: SessionId): {
       acceptanceCriteria: [...blueprint.acceptanceCriteria],
       budget: blueprint.budget,
     }],
-    taskDag: [workstream],
+    taskDag: [{ ...workstream, assigneeSlotId: slotId }],
+    stages: [{ id: 'stage-1', order: 1, mode: 'serial', workstreamIds: [workstream.id] }],
   }
   const charter: TeamCharter = {
     objective: profile.objective,
@@ -175,6 +176,7 @@ function collaborationFixture(id: SessionId): {
       blueprint: value.blueprint,
     })),
     taskDag: [...plan.taskDag],
+    stages: [...plan.stages ?? []],
     communication: { maxChallengeRounds: 1, maxMessagesPerExpert: 4 },
     qualityChecks: ['Lead reviews the expert result'],
     budgets: [{ slotId, execution: blueprint.budget }],

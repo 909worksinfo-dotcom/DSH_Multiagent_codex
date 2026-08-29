@@ -20,7 +20,7 @@
 
 `provision()` 会先解析请求的不可变 blueprint 并校验 assignment，再消耗 attempt。它会计算包括 Lead route 继承在内的有效 provider、model 与 output-token ceiling，并把 runtime 派生 composition 与 catalog digest 一起计算 hash。顺序为 P1 `beginExpertProvision()`、追加并 flush Lead binding、使用精确 preset／persona／tool policy 创建并发布 child、在未发布 setup 期间追加 child descriptor、P1 `succeedExpertProvision()`，最后准入首条 prompt
 
-任何 provider、setup、activation hook 或 prompt admission 失败都会先 drain child，再把不可变 P1 attempt 改为 `failed`。P1 CAS settlement 会跨无关 TeamRun 并发写入重试。能力缺失、descriptor drift、turn 耗尽和 deadline 到期都会保留结构化公开失败，绝不会静默缩减团队能力
+任何 provider、setup、activation hook 或 prompt admission 失败都会先 drain child，再把不可变 P1 attempt 改为 `failed`。P1 CAS settlement 会跨无关 TeamRun 并发写入重试。能力缺失、descriptor drift、turn 耗尽和活跃执行 deadline 到期都会保留结构化公开失败，绝不会静默缩减团队能力
 
 集成测试还会挂载真实 Loader、Agent preset roster、ExpertCatalog、TeamRun、JSONL persistence、SubagentRuntime、`spawn` in-process provider 与 AgentLoop，验证真实 child 只携带 blueprint 选中的 preset tool 进入模型，再从 persistence 重新读取两种 P2 descriptor 与回答
 
@@ -34,7 +34,7 @@ Lead 与 child 日志会保存完整 catalog descriptor、有效模型 route、r
 
 ## 执行预算
 
-blueprint 的有效 `maxTokens` 会传入 continuable creation，并由 subagent v3 descriptor 保留供冷恢复使用。`maxTurns` 只统计 expert descriptor 之后属于当前 child 的 `turn/start` event，因此继承的 fork turn 不消耗预算。持久化绝对 deadline 会在 fresh creation、cold publication 和 plugin reload 时安装 timer，pre-step hook 也会在模型进入前立即复查
+blueprint 的有效 `maxTokens` 会传入 continuable creation，并由 subagent v3 descriptor 保留供冷恢复使用。`maxTurns` 只统计 expert descriptor 之后属于当前 child 的 `turn/start` event，因此继承的 fork turn 不消耗预算。持久化绝对 deadline 只约束初始 prompt 准入，后续每个 `idle` 到 `running` 执行区间都会基于重新解析的 blueprint `timeoutMs` 获得独立墙钟窗口，返回 `idle` 时立即清除 timer，因此等待串行协作 baton 不会撤销专家资格。pre-step hook 会在 runtime 重载后补建缺失的活跃 timer，并在模型进入前立即复查
 
 ## 读取时必需的不变式
 

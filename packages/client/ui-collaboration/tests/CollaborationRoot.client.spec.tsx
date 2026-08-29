@@ -126,7 +126,97 @@ describe('CollaborationRoot', () => {
     expect(view.container.querySelectorAll('[data-collaboration-event]')).toHaveLength(8)
     expect(screen.getByText('最终交付')).toBeTruthy()
     expect(view.container.querySelector('[data-final-delivery="true"]')?.textContent).toContain('建议进入小批量验证')
+    expect(view.container.querySelector('[data-collaboration-discussion-stage="task-4"] [data-final-delivery="true"]')).toBeTruthy()
     expect(view.container.textContent).not.toContain('private chain of thought')
+  })
+
+  it('assigns one stable, distinct identity tone to each visible agent', () => {
+    const completed = createDemoRuns().find(run => run.status === 'completed')!
+    const value = makeProps('participant-tones', createCollaborationDemoPort([completed])).props
+    const view = render(<CollaborationRoot {...value} />)
+    const tonesByAuthor = new Map<string, string>()
+
+    for (const event of completed.timeline) {
+      const article = view.container.querySelector<HTMLElement>(`[data-collaboration-event="${event.id}"]`)
+      const tone = article?.dataset.participantTone
+      expect(tone).toBeTruthy()
+      const previous = tonesByAuthor.get(event.author.sessionId)
+      if (previous === undefined) tonesByAuthor.set(event.author.sessionId, tone!)
+      else expect(tone).toBe(previous)
+    }
+    expect(new Set(tonesByAuthor.values()).size).toBe(tonesByAuthor.size)
+  })
+
+  it('renders routed messages with semantic hierarchy and hides legacy handoff wording', () => {
+    const completed = createDemoRuns().find(run => run.status === 'completed')!
+    const routed = {
+      ...completed,
+      tasks: [],
+      timeline: [{
+        ...completed.timeline[0]!,
+        kind: 'handoff' as const,
+        content: [
+          '【串行协作交接】',
+          '上下文摘要：已完成市场证据核验',
+          '下一步：完成技术交叉评审',
+          '选择专家1：该专家负责技术边界',
+          '消息：请形成可审计评审资产',
+        ].join('\n'),
+      }],
+    }
+    const value = makeProps('message-hierarchy', createCollaborationDemoPort([routed])).props
+    const view = render(<CollaborationRoot {...value} />)
+
+    expect(view.container.textContent).not.toContain('串行协作交接')
+    expect(view.container.querySelector('[data-message-section="context"]')?.textContent).toContain('上下文摘要')
+    expect(view.container.querySelector('[data-message-section="next"]')?.textContent).toContain('下一步')
+    expect(view.container.querySelector('[data-message-section="selection"]')?.textContent).toContain('选择')
+    expect(view.container.querySelector('[data-message-section="message"]')?.textContent).toContain('消息')
+  })
+
+  it('hides impossible self-recipient labels from immutable legacy events', () => {
+    const completed = createDemoRuns().find(run => run.status === 'completed')!
+    const leadActor = { role: 'lead' as const, sessionId: completed.lead.sessionId, name: completed.lead.name }
+    const legacySelfReceipt = {
+      ...completed,
+      tasks: [],
+      timeline: [{
+        ...completed.timeline[0]!,
+        kind: 'artifact' as const,
+        author: leadActor,
+        targets: [leadActor],
+        content: 'Artifact "Accepted synthesis" is accepted at version 2.',
+      }],
+    }
+    const value = makeProps('legacy-self-recipient', createCollaborationDemoPort([legacySelfReceipt])).props
+    const view = render(<CollaborationRoot {...value} />)
+
+    expect(view.container.textContent).toContain('资产“Accepted synthesis”已更新为已采纳，当前为版本 2')
+    expect(view.container.textContent).not.toContain('发送给 主协调智能体')
+  })
+
+  it('uses the authoritative main-task titles for every discussion stage', () => {
+    const running = createDemoRuns().find(run => run.status === 'running')!
+    const value = makeProps('task-aligned-stages', createCollaborationDemoPort([running])).props
+    const view = render(<CollaborationRoot {...value} />)
+
+    const stages = view.container.querySelectorAll<HTMLElement>('[data-collaboration-discussion-stage]')
+    expect(stages).toHaveLength(running.tasks.length)
+    for (const task of running.tasks) {
+      const title = view.container.querySelector<HTMLElement>(`[data-collaboration-stage-title="${task.id}"]`)
+      expect(title?.textContent).toBe(task.subject)
+    }
+
+    const activeStage = view.container.querySelector<HTMLElement>('[data-collaboration-discussion-stage="task-3"]')
+    expect(activeStage?.dataset.current).toBe('true')
+    expect(activeStage?.querySelector('button')?.getAttribute('aria-expanded')).toBe('true')
+    expect(activeStage?.textContent).toContain(`${zh['timeline.discussing']}执行质量验收`)
+
+    const architectureStage = view.container.querySelector<HTMLElement>('[data-collaboration-discussion-stage="task-2"]')!
+    expect(architectureStage.querySelector('[data-collaboration-event="message-7"]')).toBeTruthy()
+    fireEvent.click(architectureStage.querySelector('button')!)
+    expect(architectureStage.querySelector('button')?.getAttribute('aria-expanded')).toBe('true')
+    expect(activeStage?.querySelector('button')?.getAttribute('aria-expanded')).toBe('false')
   })
 
   it('uses assigned expert roles as names throughout the visible panel', () => {

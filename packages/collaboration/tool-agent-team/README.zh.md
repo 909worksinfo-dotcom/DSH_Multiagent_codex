@@ -43,6 +43,8 @@
 
 `collaboration_send` 只在领域关系合法时接受类型化引用。challenge 与 response 必须使用同一显式非默认 dispute `thread_id`、一个显式 target 和同一 `challenge_id`；普通消息可以默认使用 `main`。其结果保留稳定 message、event、run、thread、cursor、author、target、reference、time、kind 和 visibility 字段，但会省略 caller 刚提供的 content。即使领域允许较大的公开记录，也能限制重复模型上下文
 
+串行路由器只在当前发送者进入空闲状态后推进。它会重新读取权威 run、总结相关上下文、规划一个下一步动作、选择唯一一名符合条件的接收者，并将公开内容生成为上下文摘要、下一步、接收者选择和消息四类结构化字段。`task` 路由必须引用一个已就绪的 Charter 任务，并以其预分配的 active 专家为接收者，因此下游阶段无法在 blocker 完成前启动。这些字段无需依赖展示性移交前缀即可支持恢复和清晰投影。恢复逻辑同时识别当前结构化字段与旧存储格式，因此不可变历史任务仍可继续执行，新生成消息不会包含旧标记
+
 `collaboration_task_list` 会在切分权威创建顺序列表前，校验非负安全整数 cursor 和一到 100 的 limit。非法边界返回稳定 `TEAM_INVALID_ARGUMENT` code。其他命令校验和授权错误保留领域层的稳定分类
 
 ## 模型体验
@@ -65,5 +67,4 @@
 
 - **没有 formation 工具** — P2 负责真实 child Agent 创建、provider settlement、skill 挂载和 plugin 绑定
 - **没有自动 planner** — P3 负责 Task Profiler、Team Planner、复杂度选择和 Team Charter 生成
-- **没有自动 peer 投递** — 公开记录是可审计 TeamRun 状态，不是 inbox 注入或唤醒
 - **Prompt 策略不是 confinement** — 它引导公开协作，但无法阻止其他工具或外部进程暴露私密数据

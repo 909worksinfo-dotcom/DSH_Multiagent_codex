@@ -6,6 +6,9 @@ import type {
 
 const ARTIFACT_RECEIPT = /^Artifact "(.+)" is (draft|review|accepted|superseded) at version (\d+)\.$/u
 const QUALITY_RECEIPT = /^Quality gate "(.+)" (pending|passed|failed): ([\s\S]+)$/u
+const ROUTE_MARKERS = /【串行协作交接】|\[Sequential collaboration handoff\]/gu
+const ROUTE_HEADER = /^(?:串行协作交接|Sequential collaboration handoff)\s+[^\n]+\n*/u
+const STRUCTURED_SECTION = /(?:^|\n)[ \t]*(上下文摘要|下一步|选择[^\n：:]{1,80}|消息|Context summary|Next action|Why [^\n:]{1,96}|Message)[：:][ \t]*/gmu
 const ZH_METADATA = new Map<string, string>([
   ['collaboration-research-analysis', '深度研究与证据分析'],
   ['collaboration-product-solution', '产品方案设计'],
@@ -59,6 +62,13 @@ const EN_METADATA = new Map<string, string>([
   ['collaboration-software-development', 'Software development and verification'],
   ['collaboration-peer-review', 'Collaborative challenge and peer review'],
 ])
+
+/** One visible semantic block inside a structured collaboration message. */
+export interface CollaborationMessageSection {
+  readonly kind: 'body' | 'context' | 'next' | 'selection' | 'message'
+  readonly label: string | null
+  readonly content: string
+}
 
 /** Localize stable runtime participant identifiers without mutating durable identities. */
 export function collaborationParticipantName(
@@ -162,7 +172,7 @@ export function collaborationEventContent(
     })
   }
 
-  return event.content
+  return event.content.replace(ROUTE_MARKERS, '').replace(ROUTE_HEADER, '').trimStart()
 }
 
 /** Localize a public event and deterministically hide internal participant identifiers. */
@@ -172,4 +182,41 @@ export function collaborationRunEventContent(
   language: CollaborationLanguage = run.language,
 ): string {
   return publicParticipantReferences(collaborationEventContent(event, language), run, language)
+}
+
+function sectionKind(label: string): CollaborationMessageSection['kind'] {
+  if (label === '上下文摘要' || label === 'Context summary') return 'context'
+  if (label === '下一步' || label === 'Next action') return 'next'
+  if (label === '消息' || label === 'Message') return 'message'
+  return 'selection'
+}
+
+/**
+ * Split one localized public event into visible semantic sections without mutating its durable content
+ *
+ * @param event Public collaboration event to project
+ * @param run Authoritative run used to localize participant references
+ * @param language Requested display language, defaulting to the run language
+ * @returns Ordered visible sections for the group-chat message
+ */
+export function collaborationRunEventSections(
+  event: CollaborationTimelineEvent,
+  run: CollaborationRunSnapshot,
+  language: CollaborationLanguage = run.language,
+): readonly CollaborationMessageSection[] {
+  const content = collaborationRunEventContent(event, run, language)
+  const matches = [...content.matchAll(STRUCTURED_SECTION)]
+  if (matches.length === 0) return [{ kind: 'body', label: null, content }]
+
+  const sections: CollaborationMessageSection[] = []
+  const intro = content.slice(0, matches[0]?.index ?? 0).trim()
+  if (intro !== '') sections.push({ kind: 'body', label: null, content: intro })
+  for (const [index, match] of matches.entries()) {
+    const label = match[1]?.trim() ?? ''
+    const start = match.index + match[0].length
+    const end = matches[index + 1]?.index ?? content.length
+    const value = content.slice(start, end).trim()
+    if (label !== '' && value !== '') sections.push({ kind: sectionKind(label), label, content: value })
+  }
+  return sections.length === 0 ? [{ kind: 'body', label: null, content }] : sections
 }

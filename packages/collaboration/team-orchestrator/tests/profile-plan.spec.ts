@@ -116,6 +116,32 @@ describe('automatic task profiler and team planner', () => {
     ])
   })
 
+  it('turns an inferred research objective into assigned parallel and serial execution stages', () => {
+    const profile = profileTask({
+      requestId: 'research-execution-plan' as never,
+      objective: '请分析一项重大科技并购的战略利弊，核验事实并给出综合判断',
+      context: { productLanguage: 'zh' },
+    }, config())
+    const plan = planTeam({
+      get: ref => blueprint(Number(String(ref.id).split('-')[1])),
+    }, config(), profile)
+
+    expect(profile.workstreamSource).toBe('inferred')
+    expect(plan.taskDag.map(task => task.subject)).toEqual([
+      '核验事实与证据',
+      '开展多维分析',
+      '交叉质疑与风险复核',
+      '综合判断与交付',
+    ])
+    expect(plan.stages).toEqual([
+      { id: 'stage-1', order: 1, mode: 'parallel', workstreamIds: ['verify-evidence', 'analyze-core'] },
+      { id: 'stage-2', order: 2, mode: 'serial', workstreamIds: ['challenge-findings'] },
+      { id: 'stage-3', order: 3, mode: 'serial', workstreamIds: ['synthesize-delivery'] },
+    ])
+    expect(plan.taskDag.every(task => plan.roster.some(expert => expert.slotId === task.assigneeSlotId))).toBe(true)
+    expect(new Set(plan.taskDag.slice(0, 3).map(task => task.assigneeSlotId)).size).toBe(3)
+  })
+
   it('selects three and eight distinct immutable revisions and legal topologies', () => {
     const catalog = { get: (ref: { id: unknown }) => blueprint(Number(String(ref.id).split('-')[1])) }
     const simple = profileTask({ requestId: 'one' as never, objective: 'Summarize the evidence' }, config())

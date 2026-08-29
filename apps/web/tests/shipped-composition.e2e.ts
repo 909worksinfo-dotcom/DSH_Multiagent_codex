@@ -205,7 +205,12 @@ it('forms a shipped P5 team whose controller, ledgers, gates, and market discove
       phase: 'active',
       plannedExperts: 3,
       expertCounts: { active: 3, planned: 3 },
-      tasks: [{ id: 'task-1', status: 'pending', ready: true, blockedBy: [] }],
+      tasks: [
+        { id: 'task-1', status: 'pending', ready: true, blockedBy: [], owner: { role: 'expert' } },
+        { id: 'task-2', status: 'pending', ready: true, blockedBy: [], owner: { role: 'expert' } },
+        { id: 'task-3', status: 'pending', ready: false, blockedBy: ['task-1', 'task-2'], owner: { role: 'expert' } },
+        { id: 'task-4', status: 'pending', ready: false, blockedBy: ['task-3'], owner: { role: 'expert' } },
+      ],
       protocol: {
         mode: 'enforced',
         topology: 'producer_reviewer',
@@ -219,6 +224,7 @@ it('forms a shipped P5 team whose controller, ledgers, gates, and market discove
     expect(formed.run.protocol.members).toHaveLength(3)
     expect(formed.run.protocol.members.every(member => member.phase === 'active' && member.usedMessages === 0)).toBe(true)
     expect(formed.plan?.roster).toHaveLength(3)
+    expect(formed.plan?.stages?.map(stage => stage.mode)).toEqual(['parallel', 'serial', 'serial'])
     expect(formed.plan?.roster.every(expert => expert.skillDiscovery?.providers.length === 3)).toBe(true)
     expect(formed.run.qualityGates.length).toBeGreaterThan(0)
     expect(formed.run.qualityGates.map(gate => gate.name)).toEqual(formed.charter?.qualityChecks)

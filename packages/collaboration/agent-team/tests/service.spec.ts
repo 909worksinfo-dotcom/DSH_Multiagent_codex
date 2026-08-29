@@ -133,6 +133,8 @@ async function activateEnforcedPair(
   })
   await provision(ctx, lead, 'expert-one', 'active', firstSlot)
   run = await provision(ctx, lead, 'expert-two', 'active', secondSlot)
+  await ctx.teamRuns.createQualityGate(lead, { name: 'Enforced delivery quality' })
+  run = ctx.teamRuns.getRun(lead)
   run = await ctx.teamRuns.changePhase(lead, { expectedRevision: run.revision, phase: 'active' })
   const first = (await ctx.agents.create({
     sessionId: SessionId('session-expert-one'),
@@ -447,6 +449,48 @@ describe('TeamRun formation and lifecycle', () => {
 })
 
 describe('TeamRun tasks and public collaboration', () => {
+  it('lets the Lead preassign every planned task without starting blocked work early', async () => {
+    const { ctx, lead } = await setup()
+    const { first, second } = await activateEnforcedPair(ctx, lead, { topology: 'centralized' })
+    const blocker = await ctx.teamRuns.createTask(lead, {
+      subject: 'Evidence', description: 'Establish the evidence base',
+    })
+    const dependent = await ctx.teamRuns.createTask(lead, {
+      subject: 'Synthesis', description: 'Synthesize only after evidence', blockedBy: [blocker.id],
+    })
+
+    const assignedBlocker = await ctx.teamRuns.updateTask(lead, {
+      taskId: blocker.id, expectedRevision: blocker.revision, action: 'assign', owner: 'expert-one',
+    })
+    const assignedDependent = await ctx.teamRuns.updateTask(lead, {
+      taskId: dependent.id, expectedRevision: dependent.revision, action: 'assign', owner: 'expert-two',
+    })
+    expect(assignedBlocker).toMatchObject({ status: 'pending', owner: { name: 'expert-one' }, ready: true })
+    expect(assignedDependent).toMatchObject({ status: 'pending', owner: { name: 'expert-two' }, ready: false })
+    await expect(ctx.teamRuns.updateTask(second, {
+      taskId: dependent.id, expectedRevision: assignedDependent.revision, action: 'claim',
+    })).rejects.toMatchObject({ code: 'TEAM_TASK_BLOCKED' })
+
+    const claimedBlocker = await ctx.teamRuns.updateTask(first, {
+      taskId: blocker.id, expectedRevision: assignedBlocker.revision, action: 'claim',
+    })
+    await ctx.teamRuns.writeArtifact(first, {
+      expectedVersion: 0,
+      kind: 'evidence',
+      title: 'Evidence result',
+      body: 'Reviewable evidence for the dependent task',
+      mediaType: 'text/markdown',
+      status: 'review',
+      taskIds: [blocker.id],
+    })
+    await ctx.teamRuns.updateTask(first, {
+      taskId: blocker.id, expectedRevision: claimedBlocker.revision, action: 'complete',
+    })
+    await expect(ctx.teamRuns.updateTask(second, {
+      taskId: dependent.id, expectedRevision: assignedDependent.revision, action: 'claim',
+    })).resolves.toMatchObject({ status: 'in_progress', owner: { name: 'expert-two' } })
+  })
+
   it('enforces one persisted expert message budget without leaving a rejected event', async () => {
     const { ctx, lead } = await setup()
     await enterProvisioning(ctx, lead, 'simple', 1)
@@ -500,7 +544,7 @@ describe('TeamRun tasks and public collaboration', () => {
     expect(lead.session.events).toHaveLength(eventCount)
   })
 
-  it('enforces permissions and centralized routes while routing artifact receipts to Lead atomically', async () => {
+  it('enforces permissions and centralized routes while routing artifact receipts to a valid counterparty atomically', async () => {
     const { ctx, lead } = await setup()
     const { first } = await activateEnforcedPair(ctx, lead, {
       topology: 'centralized',
@@ -547,6 +591,41 @@ describe('TeamRun tasks and public collaboration', () => {
     expect(ctx.teamRuns.getRun(lead).messages.at(-1)?.targets).toEqual([
       { role: 'lead', sessionId: lead.id, name: 'lead' },
     ])
+    const accepted = await ctx.teamRuns.writeArtifact(lead, {
+      artifactId: artifact.id,
+      expectedVersion: artifact.version,
+      kind: artifact.kind,
+      title: artifact.title,
+      body: artifact.body,
+      mediaType: artifact.mediaType,
+      status: 'accepted',
+    })
+    expect(accepted.author).toEqual(artifact.author)
+    expect(ctx.teamRuns.getRun(lead).messages.at(-1)).toMatchObject({
+      author: { role: 'lead', sessionId: lead.id },
+      targets: [{
+        role: 'expert',
+        memberId: TeamMemberId('member-expert-one'),
+        sessionId: SessionId('session-expert-one'),
+        name: 'expert-one',
+      }],
+    })
+
+    const leadArtifact = await ctx.teamRuns.writeArtifact(lead, {
+      expectedVersion: 0,
+      kind: 'analysis',
+      title: 'Lead-owned synthesis',
+      body: 'A Lead-owned ledger result has no conversational recipient',
+      mediaType: 'text/markdown',
+      status: 'accepted',
+    })
+    expect(leadArtifact.author).toMatchObject({ role: 'lead', sessionId: lead.id })
+    expect(ctx.teamRuns.getRun(lead).messages.at(-1)).toMatchObject({
+      author: { role: 'lead', sessionId: lead.id },
+      targets: [],
+    })
+    expect(ctx.teamRuns.getRun(lead).messages.every(message => message.targets.every(target =>
+      target.role !== message.author.role || target.sessionId !== message.author.sessionId))).toBe(true)
     await assertUnchanged(ctx.teamRuns.writeArtifact(first, {
       expectedVersion: 0,
       kind: 'analysis',
@@ -621,6 +700,159 @@ describe('TeamRun tasks and public collaboration', () => {
     expect(snapshotTeamRun(foldTeamRun(current.id, serializedEvents)).protocol).toEqual(current.protocol)
   })
 
+  it('keeps an enforced task in progress until its owner has authored a reviewable artifact', async () => {
+    const { ctx, lead } = await setup()
+    const { first } = await activateEnforcedPair(ctx, lead, { topology: 'centralized' })
+    const task = await ctx.teamRuns.createTask(lead, {
+      subject: 'Evidence-backed expert task',
+      description: 'The owner must produce an artifact before this task can complete',
+    })
+    const claimed = await ctx.teamRuns.updateTask(first, {
+      taskId: task.id, expectedRevision: task.revision, action: 'claim',
+    })
+    const before = ctx.teamRuns.getRun(lead)
+    await expect(ctx.teamRuns.updateTask(first, {
+      taskId: task.id, expectedRevision: claimed.revision, action: 'complete',
+    })).rejects.toMatchObject({ code: 'TEAM_TASK_INVALID_TRANSITION' })
+    expect(ctx.teamRuns.getRun(lead)).toEqual(before)
+
+    await ctx.teamRuns.writeArtifact(first, {
+      expectedVersion: 0,
+      kind: 'analysis',
+      title: 'Owner evidence',
+      body: 'The expert completed the assigned analysis.',
+      mediaType: 'text/markdown',
+      taskIds: [task.id],
+      status: 'review',
+    })
+    await expect(ctx.teamRuns.updateTask(first, {
+      taskId: task.id, expectedRevision: claimed.revision, action: 'complete',
+    })).resolves.toMatchObject({ status: 'completed', owner: { name: 'expert-one' } })
+  })
+
+  it('rejects accepted decisions and passed gates while their artifact is still under review', async () => {
+    const { ctx, lead } = await setup()
+    const { first } = await activateEnforcedPair(ctx, lead, { topology: 'centralized' })
+    const task = await ctx.teamRuns.createTask(lead, {
+      subject: 'Unaccepted evidence', description: 'Do not announce completion before acceptance',
+    })
+    const claimed = await ctx.teamRuns.updateTask(first, {
+      taskId: task.id, expectedRevision: task.revision, action: 'claim',
+    })
+    const artifact = await ctx.teamRuns.writeArtifact(first, {
+      expectedVersion: 0,
+      kind: 'analysis',
+      title: 'Pending review',
+      body: 'This output has not been accepted yet.',
+      mediaType: 'text/markdown',
+      taskIds: [task.id],
+      status: 'review',
+    })
+    await ctx.teamRuns.updateTask(first, {
+      taskId: task.id, expectedRevision: claimed.revision, action: 'complete',
+    })
+
+    const beforeDecision = ctx.teamRuns.getRun(lead)
+    await expect(ctx.teamRuns.writeDecision(lead, {
+      expectedVersion: 0,
+      subject: 'Premature acceptance',
+      outcome: 'accepted',
+      summary: 'Must not be recorded',
+      rationale: 'The referenced artifact is still under review',
+      taskIds: [task.id],
+      artifactIds: [artifact.id],
+    })).rejects.toMatchObject({ code: 'DELIVERY_FAILED' })
+    expect(ctx.teamRuns.getRun(lead)).toEqual(beforeDecision)
+
+    const beforeGate = ctx.teamRuns.getRun(lead)
+    await expect(ctx.teamRuns.updateQualityGate(lead, {
+      gateId: TeamQualityGateId('quality-gate-1'),
+      expectedVersion: 1,
+      status: 'passed',
+      summary: 'Must remain pending until the artifact is accepted',
+      taskId: task.id,
+      artifactId: artifact.id,
+    })).rejects.toMatchObject({ code: 'DELIVERY_FAILED' })
+    expect(ctx.teamRuns.getRun(lead)).toEqual(beforeGate)
+  })
+
+  it('rejects final delivery when an active expert only comments without an accepted artifact contribution', async () => {
+    const { ctx, lead } = await setup()
+    const { first, second } = await activateEnforcedPair(ctx, lead, { topology: 'centralized' })
+    const task = await ctx.teamRuns.createTask(lead, {
+      subject: 'Verified expert delivery', description: 'Every active expert must finish auditable work',
+    })
+    const claimed = await ctx.teamRuns.updateTask(first, {
+      taskId: task.id, expectedRevision: task.revision, action: 'claim',
+    })
+    const reviewArtifact = await ctx.teamRuns.writeArtifact(first, {
+      expectedVersion: 0,
+      kind: 'analysis',
+      title: 'First expert output',
+      body: 'Evidence-backed result from the assigned owner.',
+      mediaType: 'text/markdown',
+      taskIds: [task.id],
+      status: 'review',
+    })
+    await ctx.teamRuns.updateTask(first, {
+      taskId: task.id, expectedRevision: claimed.revision, action: 'complete',
+    })
+    await ctx.teamRuns.publishMessage(first, {
+      kind: 'handoff',
+      threadId: MAIN_TEAM_THREAD_ID,
+      targets: ['lead'],
+      references: { taskId: task.id, artifactId: reviewArtifact.id },
+      content: 'The owner completed the task and submitted its artifact.',
+    })
+    const artifact = await ctx.teamRuns.writeArtifact(lead, {
+      artifactId: reviewArtifact.id,
+      expectedVersion: reviewArtifact.version,
+      kind: reviewArtifact.kind,
+      title: reviewArtifact.title,
+      body: reviewArtifact.body,
+      mediaType: reviewArtifact.mediaType,
+      taskIds: reviewArtifact.taskIds,
+      status: 'accepted',
+    })
+    await ctx.teamRuns.updateQualityGate(lead, {
+      gateId: TeamQualityGateId('quality-gate-1'),
+      expectedVersion: 1,
+      status: 'passed',
+      summary: 'The owner artifact passed review',
+      taskId: task.id,
+      artifactId: artifact.id,
+    })
+    await ctx.teamRuns.writeDecision(lead, {
+      expectedVersion: 0,
+      subject: 'Accept owner artifact',
+      outcome: 'accepted',
+      summary: 'The assigned owner completed auditable work',
+      rationale: 'The accepted artifact covers the completed task',
+      taskIds: [task.id],
+      artifactIds: [artifact.id],
+    })
+    await ctx.teamRuns.publishMessage(lead, {
+      kind: 'completion_request',
+      threadId: MAIN_TEAM_THREAD_ID,
+      targets: ['expert-two'],
+      references: { taskId: task.id, artifactId: artifact.id },
+      content: 'Review the proposed completion.',
+    })
+    await ctx.teamRuns.publishMessage(second, {
+      kind: 'review',
+      threadId: MAIN_TEAM_THREAD_ID,
+      targets: ['lead'],
+      references: { taskId: task.id, artifactId: artifact.id },
+      content: 'I commented on the first expert output but produced no artifact of my own.',
+    })
+
+    const before = ctx.teamRuns.getRun(lead)
+    await expect(ctx.teamRuns.completeRun(lead, {
+      threadId: MAIN_TEAM_THREAD_ID, content: 'Must wait for every expert output',
+    })).rejects.toMatchObject({ code: 'DELIVERY_FAILED' })
+    expect(ctx.teamRuns.getRun(lead)).toEqual(before)
+  })
+
   it('commits completion and final delivery together only after every P5 ledger gate', async () => {
     const { ctx, lead } = await setup()
     await enterProvisioning(ctx, lead, 'simple', 1)
@@ -651,11 +883,8 @@ describe('TeamRun tasks and public collaboration', () => {
     const task = await ctx.teamRuns.createTask(lead, {
       subject: 'Deliver result', description: 'Produce and review the complete result',
     })
-    const claimed = await ctx.teamRuns.updateTask(lead, {
+    const claimed = await ctx.teamRuns.updateTask(expert, {
       taskId: task.id, expectedRevision: task.revision, action: 'claim',
-    })
-    await ctx.teamRuns.updateTask(lead, {
-      taskId: task.id, expectedRevision: claimed.revision, action: 'complete',
     })
 
     const before = ctx.teamRuns.getRun(lead)
@@ -665,13 +894,33 @@ describe('TeamRun tasks and public collaboration', () => {
     expect(ctx.teamRuns.getRun(lead)).toEqual(before)
     expect(lead.session.events.filter(event => event.type === 'collaboration/run/phase')).toHaveLength(3)
 
-    const artifact = await ctx.teamRuns.writeArtifact(lead, {
+    const reviewArtifact = await ctx.teamRuns.writeArtifact(expert, {
       expectedVersion: 0,
       kind: 'document',
       title: 'Reviewed result',
       body: 'Complete final artifact body',
       mediaType: 'text/markdown',
       taskIds: [task.id],
+      status: 'review',
+    })
+    await ctx.teamRuns.updateTask(expert, {
+      taskId: task.id, expectedRevision: claimed.revision, action: 'complete',
+    })
+    await ctx.teamRuns.publishMessage(expert, {
+      kind: 'handoff',
+      threadId: MAIN_TEAM_THREAD_ID,
+      targets: ['lead'],
+      references: { taskId: task.id, artifactId: reviewArtifact.id },
+      content: 'The task owner completed the artifact and requests Lead review.',
+    })
+    const artifact = await ctx.teamRuns.writeArtifact(lead, {
+      artifactId: reviewArtifact.id,
+      expectedVersion: reviewArtifact.version,
+      kind: reviewArtifact.kind,
+      title: reviewArtifact.title,
+      body: reviewArtifact.body,
+      mediaType: reviewArtifact.mediaType,
+      taskIds: reviewArtifact.taskIds,
       status: 'accepted',
     })
     await ctx.teamRuns.updateQualityGate(lead, {
@@ -685,14 +934,16 @@ describe('TeamRun tasks and public collaboration', () => {
     await ctx.teamRuns.publishMessage(lead, {
       kind: 'completion_request',
       threadId: MAIN_TEAM_THREAD_ID,
+      targets: ['expert-one'],
       references: { taskId: task.id, artifactId: artifact.id },
       content: 'Request Lead completion review',
     })
-    await ctx.teamRuns.publishMessage(lead, {
+    await ctx.teamRuns.publishMessage(expert, {
       kind: 'review',
       threadId: MAIN_TEAM_THREAD_ID,
+      targets: ['lead'],
       references: { taskId: task.id, artifactId: artifact.id },
-      content: 'Reviewed and accepted',
+      content: 'The targeted completion review confirms the accepted artifact is ready.',
     })
     await ctx.teamRuns.writeDecision(lead, {
       expectedVersion: 0,
@@ -766,10 +1017,10 @@ describe('TeamRun tasks and public collaboration', () => {
       status: 'accepted',
     })
     await ctx.teamRuns.publishMessage(lead, {
-      kind: 'completion_request', threadId: MAIN_TEAM_THREAD_ID, content: 'Please complete',
+      kind: 'completion_request', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'Please complete',
     })
     await ctx.teamRuns.publishMessage(lead, {
-      kind: 'review', threadId: MAIN_TEAM_THREAD_ID, content: 'Reviewed',
+      kind: 'review', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'Reviewed',
     })
     await ctx.teamRuns.writeDecision(lead, {
       expectedVersion: 0,
@@ -819,10 +1070,10 @@ describe('TeamRun tasks and public collaboration', () => {
       artifactId: artifact.id,
     })
     await ctx.teamRuns.publishMessage(lead, {
-      kind: 'completion_request', threadId: MAIN_TEAM_THREAD_ID, content: 'Request final completion',
+      kind: 'completion_request', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'Request final completion',
     })
     await ctx.teamRuns.publishMessage(lead, {
-      kind: 'review', threadId: MAIN_TEAM_THREAD_ID, content: 'Public review is complete',
+      kind: 'review', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'Public review is complete',
     })
     await ctx.teamRuns.writeDecision(lead, {
       expectedVersion: 0,
@@ -867,10 +1118,10 @@ describe('TeamRun tasks and public collaboration', () => {
       status: 'accepted',
     })
     await ctx.teamRuns.publishMessage(lead, {
-      kind: 'completion_request', threadId: MAIN_TEAM_THREAD_ID, content: 'Request completion',
+      kind: 'completion_request', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'Request completion',
     })
     await ctx.teamRuns.publishMessage(lead, {
-      kind: 'review', threadId: MAIN_TEAM_THREAD_ID, content: 'Review is present',
+      kind: 'review', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'Review is present',
     })
     await ctx.teamRuns.writeDecision(lead, {
       expectedVersion: 0,
@@ -935,7 +1186,7 @@ describe('TeamRun tasks and public collaboration', () => {
 
     expect(ctx.teamRuns.getRun(lead).controller.stalledTaskIds).not.toContain(task.id)
     await ctx.teamRuns.publishMessage(lead, {
-      kind: 'inform', threadId: MAIN_TEAM_THREAD_ID, content: 'Unrelated chatter does not advance the task',
+      kind: 'inform', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'Unrelated chatter does not advance the task',
     })
     expect(ctx.teamRuns.getRun(lead)).toMatchObject({
       status: 'blocked',
@@ -1077,14 +1328,25 @@ describe('TeamRun tasks and public collaboration', () => {
   it('persists only typed public messages and rejects missing task references', async () => {
     const { ctx, lead } = await setup()
     await activateSimple(ctx, lead)
+    const eventCount = lead.session.events.length
+    for (const targets of [undefined, ['expert-one', 'lead'], ['lead']] as const) {
+      await expect(ctx.teamRuns.publishMessage(lead, {
+        kind: 'proposal',
+        threadId: MAIN_TEAM_THREAD_ID,
+        ...targets === undefined ? {} : { targets },
+        content: 'Invalid serial recipient set',
+      })).rejects.toMatchObject({ code: 'TEAM_PROTOCOL_TARGET_DENIED' })
+    }
+    expect(lead.session.events).toHaveLength(eventCount)
     const proposal = await ctx.teamRuns.publishMessage(lead, {
-      kind: 'proposal', threadId: MAIN_TEAM_THREAD_ID, content: 'Adopt the reviewed approach',
+      kind: 'proposal', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'Adopt the reviewed approach',
     })
     expect(proposal).toMatchObject({ visibility: 'public', kind: 'proposal', author: { role: 'lead' } })
     expect(proposal.sequence).toBeGreaterThanOrEqual(0)
     await expect(ctx.teamRuns.publishMessage(lead, {
       kind: 'review',
       threadId: MAIN_TEAM_THREAD_ID,
+      targets: ['expert-one'],
       references: { taskId: TeamTaskId('missing') },
       content: 'This reference must fail',
     })).rejects.toMatchObject({ code: 'TEAM_TASK_NOT_FOUND' })
@@ -1094,16 +1356,16 @@ describe('TeamRun tasks and public collaboration', () => {
     const bytes = await setup({ maxPublicMessageBytes: 3, maxPublicMessages: 10 })
     await activateSimple(bytes.ctx, bytes.lead)
     await expect(bytes.ctx.teamRuns.publishMessage(bytes.lead, {
-      kind: 'inform', threadId: MAIN_TEAM_THREAD_ID, content: 'éé',
+      kind: 'inform', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'éé',
     })).rejects.toMatchObject({ code: 'TEAM_MESSAGE_TOO_LARGE' })
 
     const count = await setup({ maxPublicMessages: 1 })
     await activateSimple(count.ctx, count.lead)
     await count.ctx.teamRuns.publishMessage(count.lead, {
-      kind: 'inform', threadId: MAIN_TEAM_THREAD_ID, content: 'first',
+      kind: 'inform', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'first',
     })
     await expect(count.ctx.teamRuns.publishMessage(count.lead, {
-      kind: 'inform', threadId: MAIN_TEAM_THREAD_ID, content: 'second',
+      kind: 'inform', threadId: MAIN_TEAM_THREAD_ID, targets: ['expert-one'], content: 'second',
     })).rejects.toMatchObject({ code: 'TEAM_MESSAGE_LIMIT' })
   })
 })

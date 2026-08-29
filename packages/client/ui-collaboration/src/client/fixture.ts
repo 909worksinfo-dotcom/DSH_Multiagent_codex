@@ -89,7 +89,7 @@ function executionTasks(completed = false): readonly CollaborationTask[] {
     {
       id: 'task-4', revision: completed ? 3 : 1, subject: '反方评审与交付', description: '质疑关键假设并由 Lead 汇总最终交付',
       status: completed ? 'completed' : 'pending', owner: { sessionId: 'expert-session-8', memberId: 'expert-attempt-8', name: '反方评审专家', role: 'expert' },
-      blockedBy: completed ? [] : ['task-3'], resourceScopes: ['final-delivery'], ready: completed, resourceConflicts: [],
+      blockedBy: ['task-3'], resourceScopes: ['final-delivery'], ready: completed, resourceConflicts: [],
     },
   ]
   return tasks

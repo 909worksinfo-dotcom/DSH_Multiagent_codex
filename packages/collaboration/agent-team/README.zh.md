@@ -56,7 +56,7 @@ runtime 专家也可以在运行保持 `active` 时从 active 转为 failed。�
 
 任务是完整的版本化快照。每次变更都携带 `expectedRevision`，陈旧写入方会收到 `STALE_REVISION`。依赖必须引用当前未删除任务，不得包含重复边或自边，并保持完整图无环。只有所有 blocker 都已 completed，pending 任务才 ready，完成操作会再次检查该条件。已删除任务作为回放 tombstone 保留，但不会出现在 `listTasks()` 中，也不再占用任务容量
 
-Lead 和 active 专家可以创建和读取任务。claim、release、edit、completion、reopen、reassign 和 deletion 都保留领域层 owner 与 Lead 权限校验。`resourceScopes` 是经规范化的通用前缀，用于报告进行中工作的重叠。它们是协作提示，不是文件系统锁、plugin 权限或授权
+Lead 和 active 专家可以创建和读取任务。仅 Lead 可调用的 `assign` 会把 pending 任务绑定给一名 active 专家但不启动任务，即使其依赖仍处于阻塞状态也可以提前分配。claim、release、edit、completion、reopen、reassign 和 deletion 都保留领域层 owner 与 Lead 权限校验。`resourceScopes` 是经规范化的通用前缀，用于报告进行中工作的重叠。它们是协作提示，不是文件系统锁、plugin 权限或授权
 
 ## 强制协作协议
 
@@ -72,7 +72,7 @@ challenge 与 response 必须共享一个显式 dispute thread、一个 challeng
 
 消息有十四种持久公开 kind，包括 proposal、challenge、response、review、decision、handoff、completion request 和 final delivery。类型系统中没有 private-reasoning 类别。运行时校验会强制公开 visibility、当前 actor 和 target、当前任务引用、生命周期准入、字节和数量限制、protocol 准入和权威账本所有权。challenge id 只能出现在已关联的 challenge 或 response 上；decision、artifact 与 final-delivery 记录只能由各自所属操作生成
 
-Artifact、decision 和 quality 都是一等持久账本。紧凑 TeamRun 投影只携带 artifact 元数据而不含正文，`readArtifact()` 是经过 membership 授权的正文读取入口。Artifact 和 quality 写入会在原子追加账本事实与公开证据前校验数量、UTF-8 字节、生命周期、引用、权限和 CAS。Lead Controller 只根据持久 cursor、event time 和运行创建时快照策略派生健康度、显式关联的任务活跃度、重复工作、质量失败、active 专家缺员、建议动作和已执行控制动作。reassign、rework 与 replan 会原子追加 task revision、Lead decision 和公开记录，`replace_expert` 则把 runtime controller 引导到 orchestrator 拥有的 provider 替换路径
+Artifact、decision 和 quality 都是一等持久账本。紧凑 TeamRun 投影只携带 artifact 元数据而不含正文，`readArtifact()` 是经过 membership 授权的正文读取入口。Artifact 和 quality 写入会在原子追加账本事实与公开证据前校验数量、UTF-8 字节、生命周期、引用、权限和 CAS。专家撰写的 artifact receipt 以 Lead 为接收者，Lead 更新专家撰写的 artifact 时以原 artifact 作者为接收者，Lead 自有 artifact 的 receipt 不设置会话接收者。每条新生成的账本消息都会在追加前拒绝作者与接收者相同的关系。Lead Controller 只根据持久 cursor、event time 和运行创建时快照策略派生健康度、显式关联的任务活跃度、重复工作、质量失败、active 专家缺员、建议动作和已执行控制动作。reassign、rework 与 replan 会原子追加 task revision、Lead decision 和公开记录，`replace_expert` 则把 runtime controller 引导到 orchestrator 拥有的 provider 替换路径
 
 active run 在团队缺员、task 停滞或 quality gate failed 时投影为 `blocked`，最新 Lead 控制动作重新打开工作后投影为 `reworking`，全部完成门禁就绪后投影为 `reviewing`，相关进展或修正后的质量证据会在不存在更强状态时确定性恢复 `running`
 

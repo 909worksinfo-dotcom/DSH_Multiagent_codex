@@ -3,6 +3,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { sameActor, resolveActorByName } from './authority.ts'
+import { reviewableOwnerArtifact } from './completion-evidence.ts'
 import { TeamRunError } from './error.ts'
 import { projectTeamTask } from './fold.ts'
 import type { TeamRunFoldState } from './fold.ts'
@@ -150,6 +151,23 @@ export class TeamRunTaskBoard {
 
     let next: TeamTaskSnapshot
     switch (request.action) {
+      case 'assign':
+        if (!leadAuthority) throw new TeamRunError('only the TeamRun Lead can assign tasks', 'TEAM_LEAD_REQUIRED')
+        if (current.status !== 'pending' || current.owner !== undefined) {
+          throw new TeamRunError(
+            'only an unowned pending task can receive its planned assignment',
+            'TEAM_TASK_INVALID_TRANSITION',
+          )
+        }
+        if (request.owner === undefined || request.owner.trim().length === 0) {
+          throw new TeamRunError('assign requires one active expert owner', 'TEAM_INVALID_ARGUMENT')
+        }
+        const plannedOwner = resolveActorByName(state, request.owner)
+        if (plannedOwner.role !== 'expert') {
+          throw new TeamRunError('planned task assignment requires an active expert', 'TEAM_TASK_UNAUTHORIZED')
+        }
+        next = { ...current, owner: plannedOwner }
+        break
       case 'claim':
         if (current.owner !== undefined && !sameActor(current.owner, actor)) {
           throw new TeamRunError(`team task "${current.id}" is owned by another member`, 'TEAM_TASK_UNAUTHORIZED')
@@ -184,6 +202,18 @@ export class TeamRunTaskBoard {
         }
         if (!this.ready(state, current)) {
           throw new TeamRunError(`team task "${current.id}" is blocked`, 'TEAM_TASK_BLOCKED')
+        }
+        if (state.protocol !== undefined && current.owner?.role !== 'expert') {
+          throw new TeamRunError(
+            `enforced team task "${current.id}" requires an expert owner before completion`,
+            'TEAM_TASK_INVALID_TRANSITION',
+          )
+        }
+        if (state.protocol !== undefined && reviewableOwnerArtifact(state, current) === undefined) {
+          throw new TeamRunError(
+            `team task "${current.id}" requires a reviewable artifact authored by its owner before completion`,
+            'TEAM_TASK_INVALID_TRANSITION',
+          )
         }
         next = { ...current, status: 'completed' }
         break

@@ -5,6 +5,11 @@ import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { resolveActorByName, resolveMembership } from './authority.ts'
+import {
+  expertsMissingAcceptedContribution,
+  hasVerifiedCompletionReview,
+  tasksMissingAcceptedOwnerEvidence,
+} from './completion-evidence.ts'
 import { isCollaborationErrorCode, TeamRunError } from './error.ts'
 import { snapshotTeamRun } from './fold.ts'
 import type { TeamRunFoldState } from './fold.ts'
@@ -536,13 +541,18 @@ export class TeamRunService extends Service {
         ...taskIds[0] === undefined ? {} : { taskId: taskIds[0] },
       }
       const leadTarget = { role: 'lead', sessionId: snapshotTeamRun(state).lead.sessionId, name: 'lead' } as const
+      const receiptTargets: readonly TeamActorRef[] = initial.membership.actor.role === 'expert'
+        ? [leadTarget]
+        : artifact.author.role === 'expert'
+          ? [artifact.author]
+          : []
       this.assertProtocolAdmission(state, initial.membership.actor, {
         kind: 'artifact',
         threadId: MAIN_TEAM_THREAD_ID,
-        targets: ['lead'],
+        targets: receiptTargets.map(target => target.name),
         references: receiptReferences,
         content: receiptContent,
-      }, [leadTarget])
+      }, receiptTargets)
       await this.journal.appendBatchAndFlush(initial.lead, [
         {
           type: 'collaboration/artifact',
@@ -562,7 +572,7 @@ export class TeamRunService extends Service {
           'artifact',
           receiptReferences,
           receiptContent,
-          [leadTarget],
+          receiptTargets,
         ),
       ])
       return structuredClone(committedValue(this.journal.state(initial.lead).artifacts.get(id), `artifact "${id}"`))
@@ -600,6 +610,30 @@ export class TeamRunService extends Service {
       this.assertLedgerVersion('decision', id, request.expectedVersion, prior?.version ?? 0)
       const taskIds = this.recordTaskIds(state, request.taskIds ?? [])
       const artifactIds = this.recordArtifactIds(state, request.artifactIds ?? [])
+      if (state.protocol !== undefined && request.outcome === 'accepted') {
+        if (taskIds.length === 0 || artifactIds.length === 0) {
+          throw new TeamRunError(
+            'an accepted decision requires explicit task and artifact evidence',
+            'DELIVERY_FAILED',
+          )
+        }
+        const referencedArtifacts = artifactIds.map(id => committedValue(
+          state.artifacts.get(id),
+          `artifact "${id}"`,
+        ))
+        if (referencedArtifacts.some(artifact => artifact.status !== 'accepted')) {
+          throw new TeamRunError(
+            'an accepted decision cannot reference an artifact that is still under review',
+            'DELIVERY_FAILED',
+          )
+        }
+        if (taskIds.some(taskId => !referencedArtifacts.some(artifact => artifact.taskIds.includes(taskId)))) {
+          throw new TeamRunError(
+            'every task in an accepted decision requires one referenced accepted artifact',
+            'DELIVERY_FAILED',
+          )
+        }
+      }
       this.assertGeneratedMessageCapacity(state)
       const decision = {
         id,
@@ -678,6 +712,24 @@ export class TeamRunService extends Service {
       this.assertLedgerVersion('quality gate', request.gateId, request.expectedVersion, prior.version)
       const taskIds = request.taskId === undefined ? [] : this.recordTaskIds(state, [request.taskId])
       const artifactIds = request.artifactId === undefined ? [] : this.recordArtifactIds(state, [request.artifactId])
+      if (state.protocol !== undefined && request.status === 'passed') {
+        const task = request.taskId === undefined ? undefined : state.tasks.get(request.taskId)
+        const artifact = request.artifactId === undefined ? undefined : state.artifacts.get(request.artifactId)
+        if (task === undefined || artifact === undefined) {
+          throw new TeamRunError(
+            'a passed quality gate requires explicit task and artifact evidence',
+            'DELIVERY_FAILED',
+          )
+        }
+        if (task.status !== 'completed'
+          || artifact.status !== 'accepted'
+          || !artifact.taskIds.includes(task.id)) {
+          throw new TeamRunError(
+            'a quality gate cannot pass until its task is completed and its linked artifact is accepted',
+            'DELIVERY_FAILED',
+          )
+        }
+      }
       this.assertGeneratedMessageCapacity(state)
       const gate: Omit<TeamQualityGateRecord, 'updatedAt'> = {
         id: prior.id,
@@ -810,24 +862,47 @@ export class TeamRunService extends Service {
         && snapshot.protocol.challenges.some(challenge => challenge.status === 'open')) {
         throw new TeamRunError('every public challenge requires a response before final delivery', 'DELIVERY_FAILED')
       }
-      const silentExperts = snapshot.members.filter(member => member.phase === 'active'
-        && !snapshot.messages.some(message => message.author.role === 'expert'
-          && message.author.memberId === member.id))
-      if (silentExperts.length > 0) {
-        throw new TeamRunError(
-          `every active expert requires a public contribution before final delivery: ${silentExperts.map(member => member.name).join(', ')}`,
-          'DELIVERY_FAILED',
-        )
-      }
-      if (snapshot.tasks.length === 0 || snapshot.tasks.some(task => task.status !== 'completed')) {
-        throw new TeamRunError('every TeamRun task must be completed before final delivery', 'DELIVERY_FAILED')
+      if (state.protocol !== undefined) {
+        const incompleteExperts = expertsMissingAcceptedContribution(state)
+        if (incompleteExperts.length > 0) {
+          throw new TeamRunError(
+            `every active expert requires an accepted artifact and routed completion evidence before final delivery: ${incompleteExperts.map(member => member.name).join(', ')}`,
+            'DELIVERY_FAILED',
+          )
+        }
+        const incompleteTasks = tasksMissingAcceptedOwnerEvidence(state)
+        if (snapshot.tasks.length === 0 || incompleteTasks.length > 0) {
+          throw new TeamRunError(
+            `every TeamRun task requires an expert owner and that owner's accepted routed artifact before final delivery: ${incompleteTasks.map(task => task.id).join(', ')}`,
+            'DELIVERY_FAILED',
+          )
+        }
+      } else {
+        const silentExperts = snapshot.members.filter(member => member.phase === 'active'
+          && !snapshot.messages.some(message => message.author.role === 'expert'
+            && message.author.memberId === member.id))
+        if (silentExperts.length > 0) {
+          throw new TeamRunError(
+            `every active expert requires a public contribution before final delivery: ${silentExperts.map(member => member.name).join(', ')}`,
+            'DELIVERY_FAILED',
+          )
+        }
+        if (snapshot.tasks.length === 0 || snapshot.tasks.some(task => task.status !== 'completed')) {
+          throw new TeamRunError('every TeamRun task must be completed before final delivery', 'DELIVERY_FAILED')
+        }
       }
       if (snapshot.tasks.some(task => !snapshot.artifacts.some(artifact =>
         artifact.status === 'accepted' && artifact.taskIds.includes(task.id)))) {
         throw new TeamRunError('every TeamRun task requires an accepted artifact before final delivery', 'DELIVERY_FAILED')
       }
-      if (!snapshot.messages.some(message => message.kind === 'completion_request')
-        || !snapshot.messages.some(message => message.kind === 'review')) {
+      if (state.protocol !== undefined && !hasVerifiedCompletionReview(state)) {
+        throw new TeamRunError(
+          'final delivery requires a completion request and a later artifact-backed review from its sole expert target',
+          'DELIVERY_FAILED',
+        )
+      } else if (state.protocol === undefined
+        && (!snapshot.messages.some(message => message.kind === 'completion_request')
+          || !snapshot.messages.some(message => message.kind === 'review'))) {
         throw new TeamRunError('final delivery requires both public completion-request and review evidence', 'DELIVERY_FAILED')
       }
       if (snapshot.qualityGates.length === 0 || snapshot.qualityGates.some(gate => gate.status !== 'passed')) {
@@ -967,6 +1042,9 @@ export class TeamRunService extends Service {
     targets: readonly TeamActorRef[] = [],
   ) {
     const content = requiredText(rawContent, 'public ledger message', Number.MAX_SAFE_INTEGER)
+    if (targets.some(target => this.actorKey(target) === this.actorKey(author))) {
+      throw new TeamRunError('a public ledger message cannot target its author', 'TEAM_PROTOCOL_TARGET_DENIED')
+    }
     const maximum = snapshotTeamRun(state).policy.maxPublicMessageBytes
     if (Buffer.byteLength(content, 'utf8') > maximum) {
       throw new TeamRunError(`public ledger message exceeds ${maximum} UTF-8 bytes`, 'TEAM_MESSAGE_TOO_LARGE')
@@ -1175,6 +1253,15 @@ export class TeamRunService extends Service {
     }
     if (request.kind === 'decision' || request.kind === 'artifact' || request.kind === 'final_delivery') {
       throw new TeamRunError(`${request.kind} must be emitted by its authoritative ledger operation`, 'TEAM_INVALID_ARGUMENT')
+    }
+    if (request.kind !== 'status' && targets.length !== 1) {
+      throw new TeamRunError(
+        `${request.kind} requires exactly one explicit recipient`,
+        'TEAM_PROTOCOL_TARGET_DENIED',
+      )
+    }
+    if (targets.some(target => this.actorKey(target) === this.actorKey(author))) {
+      throw new TeamRunError('a public collaboration message cannot target its author', 'TEAM_PROTOCOL_TARGET_DENIED')
     }
     this.assertProtocolAdmission(state, author, request, targets)
     const taskId = request.references?.taskId

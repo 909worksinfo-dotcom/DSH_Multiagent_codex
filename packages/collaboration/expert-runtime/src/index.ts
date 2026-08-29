@@ -18,7 +18,6 @@ import type {} from '@deepseek-ai/dsh-skill'
 import type {} from '@deepseek-ai/dsh-skill-marketplace'
 import { foldSubagentDescriptor, type SubagentFollowupOptions } from '@deepseek-ai/dsh-subagent'
 import type {} from '@deepseek-ai/dsh-session-persistence'
-import type { JsonValue } from '@deepseek-ai/dsh-tools'
 import {
   countExpertTurns,
   findExpertBinding,
@@ -42,6 +41,12 @@ import type {
 
 type ProvisionAttemptIdType = ExpertBindingEventData['attemptId']
 
+interface ExecutionWindow {
+  readonly token: symbol
+  readonly deadlineAt: number
+  readonly timer: ReturnType<typeof setTimeout>
+}
+
 export type * from './types.ts'
 export { ExpertRuntimeEventId } from './ids.ts'
 export {
@@ -55,7 +60,12 @@ export {
 export { parseExpertBinding, parseExpertChildDescriptor } from './schema.ts'
 export { renderExpertInitialPrompt } from './prompt.ts'
 
-/** Stable child-visible name for one task-bound remote marketplace tool. */
+/**
+ * Build the stable child-visible name for one task-bound remote marketplace tool.
+ * @param capabilityId - immutable marketplace capability identity.
+ * @param rawToolName - provider-owned remote tool name.
+ * @returns a deterministic tool name within the local registry length bound.
+ */
 export function marketplaceRemoteToolName(capabilityId: string, rawToolName: string): string {
   const identity = `${capabilityId}\0${rawToolName}`
   const normalized = `market__${capabilityId.replace(/^.*?:/u, '')}__${rawToolName}`.replaceAll(/[^A-Za-z0-9_-]/gu, '_')
@@ -159,7 +169,8 @@ export class ExpertRuntime extends Service {
     readonly binding: ExpertBindingEventData
     readonly tokens: Set<symbol>
   }>()
-  private readonly deadlines = new Map<SessionId, ReturnType<typeof setTimeout>>()
+  private readonly executionTimeouts = new Map<SessionId, number>()
+  private readonly deadlines = new Map<SessionId, ExecutionWindow>()
 
   /**
    * @param ctx - Cordis context carrying TeamRun, catalog, Session, Agent, persistence, and subagent services.
@@ -174,8 +185,17 @@ export class ExpertRuntime extends Service {
       throw new TeamRunError('expert runtime maxInitialPromptBytes must be a positive safe integer', 'TEAM_INVALID_CONFIG')
     }
     ctx.subagents.registerContinuableSetup(childCtx => this.setupChild(childCtx.agent as Agent))
-    ctx.on('agent/created', ({ agent }) => { this.installDeadline(agent) })
-    ctx.on('agent/disposed', ({ agent }) => { this.clearDeadline(agent.id) })
+    ctx.on('agent/status', ({ agent, status }) => {
+      const descriptor = foldExpertChildDescriptor(agent.session)
+      if (descriptor === undefined) return
+      if (status === 'idle') {
+        this.clearDeadline(agent.id)
+        return
+      }
+      const timeoutMs = this.executionTimeouts.get(agent.id)
+      if (timeoutMs !== undefined) this.installDeadline(agent, descriptor, timeoutMs)
+    })
+    ctx.on('agent/disposed', ({ agent }) => { this.clearExecutionBudget(agent.id) })
     ctx.on('agent/pre-step', async ({ agent, signal }, next): Promise<PreStepDecision> => {
       const descriptor = foldExpertChildDescriptor(agent.session)
       if (descriptor === undefined) return next()
@@ -183,15 +203,18 @@ export class ExpertRuntime extends Service {
         if (this.parentRunIsTerminal(agent)) {
           throw new TeamRunError('expert cannot enter a model step after its TeamRun is terminal', 'TEAM_INVALID_TRANSITION')
         }
-        await this.assertCurrentBinding(agent, descriptor, signal)
+        const timeoutMs = await this.assertCurrentBinding(agent, descriptor, signal)
+        this.prepareExecutionBudget(agent.id, timeoutMs)
+        if (!this.deadlines.has(agent.id)) this.installDeadline(agent, descriptor, timeoutMs)
         if (countExpertTurns(agent.session) > descriptor.descriptor.execution.maxTurns) {
           throw new TeamRunError(
             `expert turn budget ${String(descriptor.descriptor.execution.maxTurns)} exhausted`,
             'TEAM_CANCELLED',
           )
         }
-        if (Date.now() >= descriptor.descriptor.execution.deadlineAt) {
-          throw new TeamRunError('expert execution deadline reached', 'TEAM_CANCELLED')
+        const deadlineAt = this.deadlines.get(agent.id)?.deadlineAt
+        if (deadlineAt !== undefined && Date.now() >= deadlineAt) {
+          throw new TeamRunError('expert active execution deadline reached', 'TEAM_CANCELLED')
         }
       } catch (error: unknown) {
         if (!this.parentRunIsTerminal(agent)) {
@@ -206,12 +229,12 @@ export class ExpertRuntime extends Service {
       return next()
     })
     ctx.effect(() => () => {
-      for (const timer of this.deadlines.values()) clearTimeout(timer)
+      for (const window of this.deadlines.values()) clearTimeout(window.timer)
       this.deadlines.clear()
+      this.executionTimeouts.clear()
       this.pending.clear()
       this.authorizations.clear()
     }, 'expertRuntime.lifecycle()')
-    for (const agent of ctx.agents.list()) this.installDeadline(agent)
   }
 
   /**
@@ -265,7 +288,12 @@ export class ExpertRuntime extends Service {
           toolFilter: structuredClone(resolved.blueprint.tools),
         }
         await this.appendBinding(lead, binding)
-        const started = await this.startBoundChild(lead, binding, request.signal)
+        const started = await this.startBoundChild(
+          lead,
+          binding,
+          resolved.blueprint.budget.timeoutMs,
+          request.signal,
+        )
         return {
           member: this.member(lead, request.attemptId, 'active'),
           binding: structuredClone(binding),
@@ -295,7 +323,7 @@ export class ExpertRuntime extends Service {
       const current = this.member(lead, attemptId, 'provisioning', 'active')
       try {
         this.assertPromptBytes(binding.initialPrompt)
-        await this.assertResolvedBinding(binding, lead.session.header.cwd, signal)
+        const timeoutMs = await this.assertResolvedBinding(binding, lead.session.header.cwd, signal)
         this.assertProvider(binding.subagentProvider)
         const live = this.ctx.sessions.get(binding.sessionId)
         const existing = await this.inspectChild(binding.sessionId, signal)
@@ -307,7 +335,7 @@ export class ExpertRuntime extends Service {
           this.assertSubagentComposition(existing, binding)
           const member = current.phase === 'active' ? current : await this.activateAttempt(lead, attemptId)
           if (live === undefined && !hasExpertInitialPrompt(existing, binding.initialPrompt)) {
-            const messageId = await this.followupBoundChild(lead, binding, signal)
+            const messageId = await this.followupBoundChild(lead, binding, timeoutMs, signal)
             return { member, binding, started: true, messageId }
           }
           return { member, binding, started: false }
@@ -315,7 +343,7 @@ export class ExpertRuntime extends Service {
         if (current.phase === 'active') {
           throw revisionMismatch(binding.descriptor.digest, 'active-child-missing')
         }
-        const messageId = await this.startBoundChild(lead, binding, signal)
+        const messageId = await this.startBoundChild(lead, binding, timeoutMs, signal)
         return {
           member: this.member(lead, attemptId, 'active'),
           binding,
@@ -356,7 +384,8 @@ export class ExpertRuntime extends Service {
         throw revisionMismatch(binding.descriptor.digest, descriptor.descriptor.digest)
       }
       this.assertSubagentComposition(inspected, binding)
-      await this.assertResolvedBinding(binding, lead.session.header.cwd, options.signal)
+      const timeoutMs = await this.assertResolvedBinding(binding, lead.session.header.cwd, options.signal)
+      this.prepareExecutionBudget(childId, timeoutMs)
       const token = this.authorize(childId, binding)
       try {
         return await this.ctx.subagents.followup(lead, childId, content, options)
@@ -463,12 +492,14 @@ export class ExpertRuntime extends Service {
   private async startBoundChild(
     lead: Agent,
     binding: ExpertBindingEventData,
+    timeoutMs: number,
     signal: AbortSignal,
   ): Promise<MessageId> {
     if (this.pending.has(binding.sessionId)) {
       throw new TeamRunError(`expert child "${binding.sessionId}" is already provisioning`, 'TEAM_SESSION_ID_TAKEN')
     }
     this.pending.set(binding.sessionId, binding)
+    this.prepareExecutionBudget(binding.sessionId, timeoutMs)
     try {
       const started = await this.ctx.subagents.startContinuable({
         provider: binding.subagentProvider,
@@ -500,8 +531,10 @@ export class ExpertRuntime extends Service {
   private async followupBoundChild(
     lead: Agent,
     binding: ExpertBindingEventData,
+    timeoutMs: number,
     signal: AbortSignal,
   ): Promise<MessageId> {
+    this.prepareExecutionBudget(binding.sessionId, timeoutMs)
     const token = this.authorize(binding.sessionId, binding)
     try {
       return await this.ctx.subagents.followup(
@@ -625,7 +658,7 @@ export class ExpertRuntime extends Service {
             return marketplace.execute(capability, {
               tool: rawToolName,
               arguments: args as Readonly<Record<string, unknown>>,
-            }, exec.signal) as Promise<JsonValue>
+            }, exec.signal)
           },
         }))
       }
@@ -671,7 +704,7 @@ export class ExpertRuntime extends Service {
     binding: ExpertBindingEventData,
     cwd: string | undefined,
     signal?: AbortSignal,
-  ): Promise<void> {
+  ): Promise<number> {
     signal?.throwIfAborted()
     let resolved: ResolvedExpertBinding
     try {
@@ -722,6 +755,7 @@ export class ExpertRuntime extends Service {
       || JSON.stringify(binding.toolFilter) !== JSON.stringify(resolved.blueprint.tools)) {
       throw revisionMismatch(binding.descriptor.digest, `resolved-content:${resolved.digest}`)
     }
+    return resolved.blueprint.budget.timeoutMs
   }
 
   /** Validate a live expert at the final pre-model extension point. */
@@ -729,7 +763,7 @@ export class ExpertRuntime extends Service {
     child: Agent,
     descriptor: ExpertChildDescriptorEventData,
     signal: AbortSignal,
-  ): Promise<void> {
+  ): Promise<number> {
     const parentId = child.session.header.parentSession
     const lead = parentId === undefined ? undefined : this.ctx.agents.get(parentId)
     if (lead === undefined) throw revisionMismatch(descriptor.descriptor.digest, 'lead-agent-unavailable')
@@ -738,7 +772,7 @@ export class ExpertRuntime extends Service {
       throw revisionMismatch(binding.descriptor.digest, descriptor.descriptor.digest)
     }
     this.assertSubagentComposition(child.session, binding)
-    await this.assertResolvedBinding(binding, child.session.header.cwd, signal)
+    return await this.assertResolvedBinding(binding, child.session.header.cwd, signal)
   }
 
   /** Commit P1 success with the latest revision after locating the exact provisioning row. */
@@ -817,7 +851,7 @@ export class ExpertRuntime extends Service {
     } catch (cause: unknown) {
       failures.push(cause)
     } finally {
-      this.clearDeadline(childId)
+      this.clearExecutionBudget(childId)
     }
     try {
       await this.settleFailure(lead, attemptId, error, signal)
@@ -868,49 +902,84 @@ export class ExpertRuntime extends Service {
     if (lead === undefined) return
     if (this.parentRunIsTerminal(child)) {
       this.authorizations.delete(child.id)
-      this.clearDeadline(child.id)
+      this.clearExecutionBudget(child.id)
       return
     }
     try {
       await this.settleFailure(lead, descriptor.attemptId, error)
     } finally {
       this.authorizations.delete(child.id)
-      this.clearDeadline(child.id)
+      this.clearExecutionBudget(child.id)
     }
   }
 
-  /** Install the persisted absolute deadline for one published expert Activation. */
-  private installDeadline(agent: Agent): void {
-    const descriptor = foldExpertChildDescriptor(agent.session)
-    if (descriptor === undefined) return
+  /** Retain the exact resolved timeout used for this child's active execution windows. */
+  private prepareExecutionBudget(childId: SessionId, timeoutMs: number): void {
+    this.executionTimeouts.set(childId, timeoutMs)
+  }
+
+  /** Install one deadline for the current active execution window. */
+  private installDeadline(
+    agent: Agent,
+    descriptor: ExpertChildDescriptorEventData,
+    timeoutMs: number,
+  ): void {
     this.clearDeadline(agent.id)
-    const delay = Math.max(0, descriptor.descriptor.execution.deadlineAt - Date.now())
-    const timerDelay = Math.min(delay, 2_147_483_647)
-    const timer = setTimeout(() => {
-      this.deadlines.delete(agent.id)
-      if (Date.now() < descriptor.descriptor.execution.deadlineAt) {
-        this.installDeadline(agent)
-        return
-      }
-      if (this.parentRunIsTerminal(agent)) return
-      agent.cancel({ kind: 'hook', reason: 'expert execution deadline reached' })
+    const deadlineAt = Date.now() + timeoutMs
+    if (!Number.isSafeInteger(deadlineAt)) {
       void this.failFromChild(
         agent,
         descriptor,
-        new TeamRunError('expert execution deadline reached', 'TEAM_CANCELLED'),
+        new TeamRunError('expert active execution deadline exceeds the supported range', 'TEAM_INVALID_CONFIG'),
+      ).catch((error: unknown) => {
+        this.ctx.logger.warn(`expert "${agent.id}" deadline setup failed: ${errorMessage(error)}`)
+      })
+      return
+    }
+    this.scheduleDeadline(agent, descriptor, deadlineAt)
+  }
+
+  /** Schedule one bounded timer segment without extending its active execution window. */
+  private scheduleDeadline(
+    agent: Agent,
+    descriptor: ExpertChildDescriptorEventData,
+    deadlineAt: number,
+  ): void {
+    const delay = Math.max(0, deadlineAt - Date.now())
+    const timerDelay = Math.min(delay, 2_147_483_647)
+    const token = Symbol(agent.id)
+    const timer = setTimeout(() => {
+      if (this.deadlines.get(agent.id)?.token !== token) return
+      if (Date.now() < deadlineAt) {
+        this.scheduleDeadline(agent, descriptor, deadlineAt)
+        return
+      }
+      this.deadlines.delete(agent.id)
+      if (agent.status !== 'running' || this.parentRunIsTerminal(agent)) return
+      agent.cancel({ kind: 'hook', reason: 'expert active execution deadline reached' })
+      void this.failFromChild(
+        agent,
+        descriptor,
+        new TeamRunError('expert active execution deadline reached', 'TEAM_CANCELLED'),
       ).catch((error: unknown) => {
         this.ctx.logger.warn(`expert "${agent.id}" deadline cleanup failed: ${errorMessage(error)}`)
       })
     }, timerDelay)
-    this.deadlines.set(agent.id, timer)
+    this.deadlines.set(agent.id, { token, deadlineAt, timer })
   }
 
   /** Clear one child deadline timer. */
   private clearDeadline(childId: SessionId): void {
-    const timer = this.deadlines.get(childId)
-    if (timer === undefined) return
-    clearTimeout(timer)
+    const window = this.deadlines.get(childId)
+    if (window === undefined) return
+    clearTimeout(window.timer)
     this.deadlines.delete(childId)
+  }
+
+  /** Forget both the active timer and its resolved timeout after terminal child settlement. */
+  private clearExecutionBudget(childId: SessionId): void {
+    this.clearDeadline(childId)
+    this.executionTimeouts.delete(childId)
   }
 
   /** Whether the exact live parent TeamRun has reached an irreversible terminal phase. */

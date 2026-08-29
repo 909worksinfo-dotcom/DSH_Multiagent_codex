@@ -141,11 +141,36 @@ export interface TaskProfile {
   readonly objective: string
   readonly successCriteria: readonly string[]
   readonly workstreams: readonly TeamWorkstream[]
+  /** Whether the normalized workstreams came from the caller or automatic task inference. */
+  readonly workstreamSource?: 'explicit' | 'inferred'
   readonly riskSignals: readonly string[]
   readonly context: Readonly<Record<string, string>>
   readonly complexity: TeamRunComplexity
   readonly plannedExperts: number
   readonly metrics: TaskProfileMetrics
+}
+
+/** One immutable execution step with its planned expert seat. */
+export interface PlannedTeamWorkstream extends TeamWorkstream {
+  /** Expert roster slot responsible for executing this step; absent on legacy persisted plans. */
+  readonly assigneeSlotId?: TeamPlanSlotId
+}
+
+/** One current execution step whose expert assignment is mandatory. */
+export interface AssignedTeamWorkstream extends TeamWorkstream {
+  readonly assigneeSlotId: TeamPlanSlotId
+}
+
+/** Dependency layer exposed as one serial or parallel-capable execution stage. */
+export interface TeamExecutionStage {
+  /** Stable stage identity within the plan. */
+  readonly id: string
+  /** One-based dependency order. */
+  readonly order: number
+  /** Whether the steps in this stage are independent of each other. */
+  readonly mode: 'serial' | 'parallel'
+  /** Exact workstreams admitted in this stage. */
+  readonly workstreamIds: readonly string[]
 }
 
 /** One exact blueprint selected for a stable planned roster slot. */
@@ -170,7 +195,15 @@ export interface PlannedExpert {
 export interface TeamPlan {
   readonly topology: TeamTopology
   readonly roster: readonly PlannedExpert[]
-  readonly taskDag: readonly TeamWorkstream[]
+  readonly taskDag: readonly PlannedTeamWorkstream[]
+  /** Explicit dependency layers; absent on legacy persisted plans. */
+  readonly stages?: readonly TeamExecutionStage[]
+}
+
+/** Newly generated complete plan with mandatory stage and assignment metadata. */
+export interface CurrentTeamPlan extends TeamPlan {
+  readonly taskDag: readonly AssignedTeamWorkstream[]
+  readonly stages: readonly TeamExecutionStage[]
 }
 
 /** Lead-readable collaboration charter committed before child provisioning. */
@@ -184,7 +217,9 @@ export interface TeamCharter {
     readonly role: string
     readonly blueprint: ExpertBlueprintRef
   }[]
-  readonly taskDag: readonly TeamWorkstream[]
+  readonly taskDag: readonly PlannedTeamWorkstream[]
+  /** Explicit dependency layers; absent on legacy persisted charters. */
+  readonly stages?: readonly TeamExecutionStage[]
   readonly communication: TeamCommunicationLimits
   readonly qualityChecks: readonly string[]
   readonly budgets: readonly {

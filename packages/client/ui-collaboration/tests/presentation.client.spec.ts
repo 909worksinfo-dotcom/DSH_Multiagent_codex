@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   collaborationDisplayText, collaborationEventContent, collaborationParticipantName,
-  collaborationRunEventContent,
+  collaborationRunEventContent, collaborationRunEventSections,
 } from '../src/client/presentation.ts'
 import type { CollaborationRunSnapshot, CollaborationTimelineEvent } from '../src/client/types.ts'
 
@@ -52,5 +52,28 @@ describe('collaboration presentation language', () => {
     } as CollaborationTimelineEvent
 
     expect(collaborationRunEventContent(leaked, run)).toBe('市场分析专家 请 主协调智能体 复核市场分析专家的估值假设')
+  })
+
+  it('removes legacy handoff markers and projects routing fields as semantic sections', () => {
+    const run = {
+      language: 'zh',
+      lead: { name: 'lead' },
+      experts: [{ name: 'expert-1', role: 'Market Analyst' }],
+    } as unknown as CollaborationRunSnapshot
+    const routed = event('handoff', [
+      '【串行协作交接】',
+      '上下文摘要：市场分析已经完成',
+      '下一步：核验关键估值',
+      '选择expert-1：该专家负责估值分析',
+      '消息：请提交可审计资产',
+    ].join('\n'))
+
+    expect(collaborationRunEventContent(routed, run)).not.toContain('串行协作交接')
+    expect(collaborationRunEventSections(routed, run)).toEqual([
+      { kind: 'context', label: '上下文摘要', content: '市场分析已经完成' },
+      { kind: 'next', label: '下一步', content: '核验关键估值' },
+      { kind: 'selection', label: '选择市场分析专家', content: '该专家负责估值分析' },
+      { kind: 'message', label: '消息', content: '请提交可审计资产' },
+    ])
   })
 })

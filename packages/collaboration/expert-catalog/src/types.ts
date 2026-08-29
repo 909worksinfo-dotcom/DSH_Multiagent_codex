@@ -60,7 +60,7 @@ export interface ExpertExecutionBudget {
   readonly maxTurns: number
   /** Maximum output tokens allowed for each expert model request. */
   readonly maxTokens: number
-  /** Wall-clock execution ceiling in milliseconds. */
+  /** Wall-clock ceiling for each active expert execution interval in milliseconds. */
   readonly timeoutMs: number
 }
 

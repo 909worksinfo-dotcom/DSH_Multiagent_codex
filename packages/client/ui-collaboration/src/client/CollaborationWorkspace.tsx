@@ -4,11 +4,16 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { CollaborationWorkspaceProps } from './contract.ts'
 import { collaborationCopy as copy, detectCollaborationLanguage } from './language.ts'
-import { collaborationDisplayText, collaborationRunEventContent } from './presentation.ts'
-import type { CollaborationLanguage, CollaborationRunId, CollaborationRunSnapshot } from './types.ts'
+import {
+  collaborationDisplayText, collaborationRunEventContent, collaborationRunParticipantName,
+} from './presentation.ts'
+import type {
+  CollaborationLanguage, CollaborationRunId, CollaborationRunSnapshot, CollaborationTask,
+} from './types.ts'
 import css from './CollaborationWorkspace.module.css'
 
 const ACTIVE_STATUSES = new Set(['forming', 'running', 'blocked', 'reviewing', 'reworking'])
+const MAX_TASK_DESCRIPTION_CHARACTERS = 60
 
 function taskTitle(objective: string): string {
   const firstLine = objective.trim().split(/\r?\n/u, 1)[0]?.trim() ?? ''
@@ -16,11 +21,53 @@ function taskTitle(objective: string): string {
   return points.length <= 48 ? firstLine : `${points.slice(0, 48).join('')}…`
 }
 
+/** Keep the task list scannable without mutating the authoritative task description. */
+function compactTaskDescription(description: string): string {
+  const normalized = description.trim().replace(/\s+/gu, ' ')
+  const characters = Array.from(normalized)
+  if (characters.length <= MAX_TASK_DESCRIPTION_CHARACTERS) return normalized
+  return `${characters.slice(0, MAX_TASK_DESCRIPTION_CHARACTERS - 1).join('')}…`
+}
+
 function runTone(run: CollaborationRunSnapshot): 'live' | 'success' | 'error' | 'neutral' {
   if (run.status === 'completed') return 'success'
   if (run.status === 'team_formation_failed' || run.status === 'failed') return 'error'
   if (ACTIVE_STATUSES.has(run.status)) return 'live'
   return 'neutral'
+}
+
+interface ExecutionStageView {
+  readonly order: number
+  readonly mode: 'serial' | 'parallel'
+  readonly tasks: readonly CollaborationTask[]
+}
+
+function executionStageViews(tasks: readonly CollaborationTask[]): ExecutionStageView[] {
+  const byId = new Map(tasks.map(task => [task.id, task]))
+  const depths = new Map<string, number>()
+  const visiting = new Set<string>()
+  const depth = (id: string): number => {
+    const known = depths.get(id)
+    if (known !== undefined) return known
+    if (visiting.has(id)) return 1
+    const task = byId.get(id)
+    if (task === undefined) return 0
+    visiting.add(id)
+    const value = 1 + Math.max(0, ...task.blockedBy.map(depth))
+    visiting.delete(id)
+    depths.set(id, value)
+    return value
+  }
+  const grouped = new Map<number, CollaborationTask[]>()
+  for (const task of tasks) {
+    const order = depth(task.id)
+    grouped.set(order, [...grouped.get(order) ?? [], task])
+  }
+  return [...grouped.entries()].sort(([left], [right]) => left - right).map(([order, stageTasks]) => ({
+    order,
+    mode: stageTasks.length > 1 ? 'parallel' : 'serial',
+    tasks: stageTasks,
+  }))
 }
 
 function ActiveRun({ run, language, onNew, onLeave }: {
@@ -33,6 +80,7 @@ function ActiveRun({ run, language, onNew, onLeave }: {
   const leadUpdates = [...run.timeline]
     .filter(event => event.author.role === 'lead' && event.kind !== 'final_delivery')
     .sort((left, right) => left.cursor - right.cursor)
+  const stages = executionStageViews(run.tasks)
   return (
     <main className={css.active} data-collaboration-workspace="active">
       <header className={css.activeHeader}>
@@ -71,18 +119,49 @@ function ActiveRun({ run, language, onNew, onLeave }: {
                 </header>
                 {run.tasks.length === 0
                   ? <p className={css.planEmpty}>{copy(language, 'workspace.plan.empty')}</p>
-                  : <ol>{run.tasks.map(task => (
-                    <li key={task.id} data-collaboration-center-task={task.id} data-status={task.status}>
-                      <span className={css.taskMark} aria-hidden="true">{task.status === 'completed' ? '✓' : task.status === 'in_progress' ? '→' : '·'}</span>
-                      <div>
-                        {task.status === 'completed'
-                          ? <del>{collaborationDisplayText(task.subject, language)}</del>
-                          : <strong>{collaborationDisplayText(task.subject, language)}</strong>}
-                        <p>{task.description}</p>
-                      </div>
-                      <small>{copy(language, `tasks.status.${task.status}`)}</small>
-                    </li>
-                  ))}</ol>}
+                  : <div className={css.planStages}>{stages.map(stage => (
+                    <section
+                      className={css.planStage}
+                      key={stage.order}
+                      data-execution-stage={stage.order}
+                      data-mode={stage.mode}
+                    >
+                      <header className={css.stageHeader}>
+                        <span>{copy(language, 'workspace.plan.stage', { stage: stage.order })}</span>
+                        <small data-mode={stage.mode}>{copy(language, `workspace.plan.${stage.mode}`)}</small>
+                      </header>
+                      <ol className={css.stageTasks}>{stage.tasks.map(task => (
+                        <li
+                          key={task.id}
+                          data-collaboration-center-task={task.id}
+                          data-status={task.status}
+                          data-task-mode={stage.mode}
+                        >
+                          <span className={css.taskMark} aria-hidden="true">{task.status === 'completed' ? '✓' : task.status === 'in_progress' ? '→' : '·'}</span>
+                          <div className={css.taskContent}>
+                            <div className={css.taskHeading} data-task-heading>
+                              {task.status === 'completed'
+                                ? <del>{collaborationDisplayText(task.subject, language)}</del>
+                                : <strong>{collaborationDisplayText(task.subject, language)}</strong>}
+                              <small data-task-status>{copy(language, `tasks.status.${task.status}`)}</small>
+                            </div>
+                            <p data-task-description>{compactTaskDescription(task.description)}</p>
+                            <div className={css.taskMeta}>
+                              <span className={css.taskMode} data-mode={stage.mode} data-task-mode-label>
+                                {copy(language, `workspace.plan.${stage.mode}Task`)}
+                              </span>
+                              <span className={css.taskAgent} data-task-agent>
+                                <span>{copy(language, 'workspace.plan.agent')}</span>
+                                <b>{task.owner === null
+                                  ? copy(language, 'workspace.plan.unassigned')
+                                  : collaborationRunParticipantName(run, task.owner.name, task.owner.role, language)}</b>
+                              </span>
+                            </div>
+                          </div>
+                        </li>
+                      ))}</ol>
+                    </section>
+                  ))}</div>}
               </section>
 
               <section className={css.leadUpdates} aria-labelledby="workspace-lead-updates-title">

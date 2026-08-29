@@ -226,6 +226,7 @@ export function profileTask(request: CreateTeamOrchestrationRequest, config: Con
     objective,
     successCriteria,
     workstreams,
+    workstreamSource: request.workstreams === undefined || request.workstreams.length === 0 ? 'inferred' : 'explicit',
     riskSignals,
     context,
     complexity: selectedComplexity,

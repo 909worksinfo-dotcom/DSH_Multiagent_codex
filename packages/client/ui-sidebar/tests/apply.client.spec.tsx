@@ -9,7 +9,7 @@ import type { SidebarRootInjected } from '@deepseek-ai/dsh-client-ui-sidebar/cli
 async function bench(declare = true) {
   const ctx = new Context()
   await ctx.plugin(SlotRegistry).await()
-  const layout = { toggleSidebar: vi.fn() }
+  const layout = { enterConversation: vi.fn(), toggleSidebar: vi.fn() }
   const workspaces = { startSession: vi.fn() }
   const sessions = { open: vi.fn(), clear: vi.fn() }
   ctx.provide('layout', layout)
@@ -49,6 +49,7 @@ describe('ui-sidebar apply', () => {
     expect(b.workspaces.startSession).toHaveBeenCalledWith('workspace')
     injected.startSession()
     expect(b.workspaces.startSession).toHaveBeenLastCalledWith(undefined)
+    expect(b.layout.enterConversation).toHaveBeenCalledTimes(2)
     injected.toggleSidebar()
     expect(b.layout.toggleSidebar).toHaveBeenCalledOnce()
   })

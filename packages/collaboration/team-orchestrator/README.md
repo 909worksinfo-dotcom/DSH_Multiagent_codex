@@ -32,16 +32,16 @@ Configuration requires exactly one ordered pool for each first-wave domain. A po
 
 ## Profiling and planning
 
-`create()` preserves the original objective, infers a domain when no hint is supplied, normalizes explicit workstreams or derives bounded workstreams from multilingual separators and task-action signals, then computes dependency depth, capability density, decomposition, and risk metrics. The deterministic expert bands are `simple = 1`, `medium = 2..4`, and `complex = 5..8`. An optional `productTitle` context value participates in inference without changing the displayed objective.
+`create()` preserves the original objective, infers a domain when no hint is supplied, normalizes explicit workstreams or derives bounded workstreams from multilingual separators and task-action signals, then computes dependency depth, capability density, decomposition, and risk metrics. Every task starts with at least three experts; simple tasks use exactly three, medium tasks use three or four, and complex tasks use five to eight. An optional `productTitle` context value participates in inference without changing the displayed objective.
 
-The planner ranks the configured exact revisions by stable capability relevance and configuration order. Simple tasks use `producer_reviewer`; medium tasks use `centralized` or `parallel`; complex tasks use `hybrid` or `grouped`. Missing capacity or an unavailable revision terminates the P1 run as `formation_failed`; it never continues with only the Lead.
+The planner ranks the configured exact revisions by stable capability relevance and configuration order. An inferred objective becomes a domain-specific execution DAG, while caller-authored workstreams remain unchanged. The planner groups dependency layers into explicit serial or parallel stages and assigns every step to one immutable roster slot. Simple tasks use `producer_reviewer`; medium tasks use `centralized` or `parallel`; complex tasks use `hybrid` or `grouped`. Missing capacity or an unavailable revision terminates the P1 run as `formation_failed`; it never continues with only the Lead.
 
-The charter commits the objective, success criteria, exact roster, task DAG, topology, communication limits, quality checks, per-expert execution budgets, and fail-closed termination rule before provisioning starts. The orchestrator then materializes one immutable TeamRun protocol from that exact charter and the committed catalog revisions: each slot receives its blueprint permissions and deterministic topology routes before expert provisioning can succeed
+The charter commits the objective, success criteria, exact roster, assigned task DAG, execution stages, topology, communication limits, quality checks, per-expert execution budgets, and fail-closed termination rule before provisioning starts. The orchestrator then materializes one immutable TeamRun protocol from that exact charter and the committed catalog revisions: each slot receives its blueprint permissions and deterministic topology routes before expert provisioning can succeed
 
 ## Service operations
 
 - `create(lead, request)` creates or idempotently resumes the profile, plan, and charter
-- `form(lead, command, signal)` materializes or verifies the Charter task DAG and quality gates, provisions or recovers every planned expert through `ctx.expertRuntime`, and activates only at exact strength
+- `form(lead, command, signal)` materializes or verifies the Charter task DAG and quality gates, provisions or recovers every planned expert through `ctx.expertRuntime`, preassigns every task without starting blocked work, and activates only at exact strength
 - `orchestrate(lead, request, signal)` is the one-click `create` plus `form` path
 - `retry(lead, command, signal)` idempotently resumes a non-terminal provisioning run without replaying accepted child work
 - `replaceExpert(lead, request, signal)` idempotently binds one failed active member back to its durable roster slot, provisions the next immutable attempt through ExpertRuntime, and preserves failed attempts as audit rows

@@ -3,6 +3,7 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { TeamRunSnapshot } from '@deepseek-ai/dsh-agent-team'
 import { digestJson } from './digest.ts'
+import { executionStages, executionTaskDag } from './plan.ts'
 import {
   parseTeamCharterEvent,
   parseTeamPlanEvent,
@@ -90,7 +91,14 @@ export function applyTeamOrchestrationEvent(state: TeamOrchestrationFoldState, e
     if (value.planDigest !== digestJson(value.plan)) throw new Error('team plan digest does not match its complete value')
     if (value.plan.roster.length !== profile.profile.plannedExperts) throw new Error('team plan roster does not match the profiled expert target')
     if (!legalTopology(profile.profile.complexity, value.plan.topology)) throw new Error('team plan topology is illegal for the profiled complexity')
-    if (digestJson(value.plan.taskDag) !== digestJson(profile.profile.workstreams)
+    const currentPlan = profile.profile.workstreamSource !== undefined
+    const plannedWorkstreams = value.plan.taskDag.map(({ assigneeSlotId: _assigneeSlotId, ...task }) => task)
+    if (digestJson(plannedWorkstreams) !== digestJson(currentPlan
+      ? executionTaskDag(profile.profile)
+      : profile.profile.workstreams)
+      || (currentPlan && digestJson(value.plan.stages) !== digestJson(executionStages(value.plan.taskDag)))
+      || (currentPlan && value.plan.taskDag.some(task => task.assigneeSlotId === undefined
+        || !value.plan.roster.some(expert => expert.slotId === task.assigneeSlotId)))
       || value.plan.roster.some(item => item.assignment.objective !== profile.profile.objective)) {
       throw new Error('team plan task DAG or assignments do not match the task profile')
     }
@@ -119,6 +127,7 @@ export function applyTeamOrchestrationEvent(state: TeamOrchestrationFoldState, e
       || digestJson(value.charter.successCriteria) !== digestJson(profile.profile.successCriteria)
       || value.charter.topology !== plan.plan.topology
       || digestJson(value.charter.taskDag) !== digestJson(plan.plan.taskDag)
+      || digestJson(value.charter.stages ?? null) !== digestJson(plan.plan.stages ?? null)
       || digestJson(value.charter.roster) !== digestJson(plan.plan.roster.map(
         ({ slotId, name, role, blueprint }) => ({ slotId, name, role, blueprint }),
       ))

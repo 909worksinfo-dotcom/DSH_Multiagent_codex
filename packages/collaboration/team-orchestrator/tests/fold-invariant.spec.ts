@@ -91,7 +91,8 @@ describe('TeamOrchestrator replay and invariant companion', () => {
         acceptanceCriteria: ['Return a reviewed summary'],
         budget: { maxTurns: 2, maxTokens: 1_024, timeoutMs: 60_000 },
       }],
-      taskDag: profile().workstreams,
+      taskDag: profile().workstreams.map(task => ({ ...task, assigneeSlotId: TeamPlanSlotId('slot-1') })),
+      stages: [{ id: 'stage-1', order: 1, mode: 'serial', workstreamIds: ['primary-delivery'] }],
     }
     const valid = {
       type: 'collaboration/orchestration/plan',

@@ -657,6 +657,7 @@ export interface CreateTeamTaskRequest {
 
 /** Supported compare-and-set task mutations. */
 export const TEAM_TASK_ACTIONS = [
+  'assign',
   'claim',
   'release',
   'edit',
@@ -686,7 +687,7 @@ export interface UpdateTeamTaskRequest {
   readonly blockedBy?: readonly TeamTaskId[]
   /** Complete replacement scopes for `edit`. */
   readonly resourceScopes?: readonly string[]
-  /** Member name, `lead`, or empty to clear ownership for `reassign`. */
+  /** Member name, `lead`, or empty to clear ownership for `reassign`; required by `assign`. */
   readonly owner?: string
 }
 
@@ -696,7 +697,7 @@ export interface PublishCollaborationMessageRequest {
   readonly kind: PublicCollaborationMessageKind
   /** Discussion thread. */
   readonly threadId: TeamThreadId
-  /** Member names or `lead`; an empty list addresses the whole team. */
+  /** Exactly one member name or `lead`; only runtime status may omit a recipient. */
   readonly targets?: readonly string[]
   /** Optional typed record references. */
   readonly references?: PublicCollaborationReferences

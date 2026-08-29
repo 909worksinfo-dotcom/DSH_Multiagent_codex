@@ -289,6 +289,15 @@ describe('TeamOrchestrator lifecycle', () => {
     expect(formed).toMatchObject({ requestId, run: { phase: 'active', plannedExperts: 3 } })
     expect(formed.createdAt).toBeGreaterThan(0)
     expect(formed.plan?.roster).toHaveLength(3)
+    expect(formed.plan?.stages?.map(stage => stage.mode)).toEqual(['parallel', 'serial', 'serial'])
+    expect(formed.run.tasks).toHaveLength(4)
+    expect(formed.run.tasks.every(task => task.owner?.role === 'expert' && task.status === 'pending')).toBe(true)
+    expect(formed.run.tasks.filter(task => task.ready)).toHaveLength(2)
+    for (const [index, task] of formed.run.tasks.entries()) {
+      const planned = formed.plan?.taskDag[index]
+      const member = formed.run.members.find(candidate => candidate.protocolSlotId === planned?.assigneeSlotId)
+      expect(task.owner?.name).toBe(member?.name)
+    }
     expect(formed.run.qualityGates.map(gate => gate.name)).toEqual(formed.charter?.qualityChecks)
     expect(formed.run.qualityGates.every(gate => gate.status === 'pending')).toBe(true)
     expect(ctx.agents.get(formed.run.members[0]!.sessionId)?.session.header.parentSession).toBe(lead.id)
@@ -607,17 +616,20 @@ describe('TeamOrchestrator lifecycle', () => {
     expect(formed.run.tasks).toEqual([
       expect.objectContaining({
         id: 'task-1',
-        revision: 1,
+        revision: 2,
         subject: 'Research evidence',
         blockedBy: [],
+        status: 'pending',
       }),
       expect.objectContaining({
         id: 'task-2',
-        revision: 1,
+        revision: 2,
         subject: 'Analyze evidence',
         blockedBy: ['task-1'],
+        status: 'pending',
       }),
     ])
+    expect(formed.run.tasks.every(task => task.owner?.role === 'expert')).toBe(true)
 
     const repeated = await ctx.teamOrchestrator.retry(lead, { requestId }, new AbortController().signal)
     expect(repeated.run.tasks.map(task => task.id)).toEqual(['task-1', 'task-2'])

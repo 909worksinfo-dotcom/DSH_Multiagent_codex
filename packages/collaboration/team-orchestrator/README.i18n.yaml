@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/collaboration/team-orchestrator/README.md
-README.md: 135a013f9bbddac55b9e2460b09b715bc8666472
-README.zh.md: cdacf576ab7ecb26ee38d351dbe759f9af977c50
+README.md: c5680baee1dd106396ec4d324886690136ef565d
+README.zh.md: 1a05c4ea099740aea3c035749aee0561c5886de2

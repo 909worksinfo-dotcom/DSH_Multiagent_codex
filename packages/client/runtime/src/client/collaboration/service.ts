@@ -48,12 +48,13 @@ ${request.objective}
 必须遵守以下执行协议：
 1. 所有公开任务名、观点、质疑、回应、评审、资产、裁决和最终交付都使用简体中文
 2. 公开文本中称自己为“主协调智能体”，称每位专家为任务章程中的完整角色名（例如“市场分析专家”），不得使用 expert-N 或“专家N”；工具参数仍使用内部标识。除用户原文中的专有名词和必要缩写外，避免使用英文角色名与界面术语
-3. 先调用 collaboration_get 和 collaboration_task_list 读取已经由 Team Charter 创建的专家团队、任务和质量门
-4. 不要重复创建 Team Charter 中已有的任务；使用 collaboration_followup 把现有任务明确委派给专家
+3. 先调用 collaboration_get 和 collaboration_task_list 读取 Team Charter 已创建的完整任务、依赖关系、预分配负责人和质量门；把相同依赖层视为一个阶段，同阶段多个无互相依赖的任务是并行阶段，单个任务是串行阶段
+4. 不要重复创建或擅自改写 Team Charter 中已有的任务。每次只从 ready=true 的任务里选择下一步，使用 collaboration_followup 并携带 task_id 发送给该任务预分配的 owner；专家领取并完成当前任务后才能推进其下游任务。并行阶段表示依赖上可并行，但仍按当前单消息接力协议逐个发起
 5. 主协调智能体不自行使用 Bash、联网搜索、技能加载或其他日常会话工具执行专家工作，只使用 collaboration_* 工具协调；必要的调研和工具执行交给已挂载技能与插件的专家
-6. 确保每位专家至少发布一次用户可见的有效贡献，并组织必要的质疑、回应和交叉评审；不得公开私有思考过程
-7. 完成任务后检查并接收覆盖全部任务的资产，通过全部质量门，为每项任务记录关联已接收资产的主协调智能体裁决
-8. 发布完成申请和评审记录，最后调用 collaboration_complete 交付完整结果；在该调用成功前不得直接结束任务
+6. 每位专家都必须亲自创建覆盖其任务的资产，并把该资产连同任务引用回交主协调智能体；只有聊天、口头结论或其他专家代写的资产都不算完成
+7. 主协调智能体必须逐项阅读并接收专家本人资产，随后才能宣告整体完成、记录“已接受”裁决或通过关联质量门；不得把“评审中”资产描述为已接收产出或整体完成
+8. 最终交付前，向恰好一名专家发送完成申请，引用该专家已经接收的 task_id 与 artifact_id，并等待同一专家使用完全相同的 task_id 与 artifact_id 返回后续评审
+9. 仅当所有活跃专家都有本人已接收且已回交的资产、全部任务与质量门完成、完成申请获得匹配评审后，才调用 collaboration_complete；在该调用成功前不得直接结束任务
 
 现在开始执行，不要只复述计划`
   }
@@ -65,12 +66,13 @@ ${request.objective}
 Mandatory execution protocol:
 1. Use English for every public task, contribution, challenge, response, review, artifact, decision, and final delivery.
 2. In public text, refer to every expert by the full assigned role name from the Team Charter; never expose expert-N identifiers. Internal tool arguments still use stable identifiers.
-3. Call collaboration_get and collaboration_task_list first to read the team, tasks, and quality gates already created by the Team Charter.
-4. Do not duplicate Charter tasks. Delegate the existing tasks with collaboration_followup.
+3. Call collaboration_get and collaboration_task_list first to read every Charter task, dependency, preassigned owner, and quality gate. Treat one dependency layer as a stage: multiple mutually independent tasks form a parallel stage and one task forms a serial stage.
+4. Never duplicate or silently rewrite Charter tasks. Select the next step only from tasks with ready=true, then use collaboration_followup with its task_id and its preassigned owner. The expert must claim and finish that task before any downstream task can start. A parallel stage is dependency-parallel but is still dispatched one task at a time under the existing single-message baton.
 5. Do not use Bash, web search, skill loading, or everyday-chat tools for expert work. Coordinate only through collaboration_* tools and delegate specialist execution to experts with mounted skills and plugins.
-6. Ensure every expert publishes at least one user-visible material contribution and run the necessary challenge, response, and cross-review. Never publish private reasoning.
-7. Accept artifacts covering every completed task, pass every quality gate, and record a Lead decision for each task linked to an accepted artifact.
-8. Publish completion-request and review evidence, then call collaboration_complete with the complete delivery. Do not end the task before that call succeeds.
+6. Every expert must author an artifact covering their assigned task and route that exact task/artifact evidence back to the Lead. A chat message, verbal conclusion, or artifact authored by another expert is not completion.
+7. The Lead must read and accept each owner-authored artifact before declaring the overall collaboration complete, recording an accepted decision, or passing a linked quality gate. Never describe a review-state artifact as an accepted output or an overall completion.
+8. Before final delivery, send a completion request to exactly one expert referencing that expert's already-accepted task_id and artifact_id, then wait for the same expert's later review using the exact same task_id and artifact_id.
+9. Call collaboration_complete only after every active expert has an accepted routed artifact, every task and quality gate is complete, and the completion request has its matching review. Do not end the task before that call succeeds.
 
 Start executing now; do not merely restate the plan.`
 }
@@ -199,9 +201,7 @@ function runView(
         ...expert.binding.marketplaceProviders === undefined
           ? {}
           : { marketplaceProviders: expert.binding.marketplaceProviders.map(provider => ({ ...provider })) },
-        ...expert.binding.marketplaceSkills === undefined
-          ? {}
-          : { marketplaceSkills: expert.binding.marketplaceSkills.map(skill => ({ ...skill })) },
+        marketplaceSkills: expert.binding.marketplaceSkills.map(skill => ({ ...skill })),
         plugins: expert.binding.plugins.map(plugin => ({ ...plugin })),
       },
       ...expert.failure === undefined ? {} : { failure: failureView(expert.failure) },
