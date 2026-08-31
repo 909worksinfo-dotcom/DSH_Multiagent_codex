@@ -1,0 +1,358 @@
+// Boots the shipped Web composition over the built dist this lane already uses
+// and asserts what that composition produces: the model-visible tool catalog
+// and file-reference guidance plus its retry, sandbox, and approval defaults.
+// No browser and no model call — these are composition facts, and the browser
+// scenarios in this lane cover the surface itself.
+import { readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
+import { afterEach, expect, it } from 'vitest'
+import { CallId } from '@deepseek-ai/dsh-llm'
+import { canonicalPath, writableRoots } from '@deepseek-ai/dsh-sandbox'
+import { SessionId } from '@deepseek-ai/dsh-session'
+import { settingsNamespace } from '@deepseek-ai/dsh-settings'
+import { TeamOrchestrationRequestId } from '@deepseek-ai/dsh-team-orchestrator'
+// Empty type imports carry the tools/sandboxPolicy/approval Context merges.
+import type {} from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-sandbox-policy'
+import type {} from '@deepseek-ai/dsh-user-approval'
+import type {} from '@deepseek-ai/dsh-permission-presets'
+import type {} from '@deepseek-ai/dsh-agent-presets'
+import type {} from '@deepseek-ai/dsh-commands'
+import type {} from '@deepseek-ai/dsh-system-prompt'
+import { launchWebScaffold, type WebScaffold } from './scaffold.ts'
+
+const FILE_REFERENCE_PROMPT = fileURLToPath(new URL(
+  './snapshots/web-runtime-context/file-reference-prompt.expected.md', import.meta.url,
+))
+
+/**
+ * The catalog the shipped Web composition puts in front of the model, minus the
+ * ripgrep-dependent pair below. The absences are deliberate, not incidental
+ * gaps: the `cordis_*` toolset executes model-written JavaScript that no
+ * sandbox row confines, `web_fetch` chooses its own request target, and
+ * `mcp_*` servers spawn outside `ctx.shell`. The composition Agent Note owns the
+ * rationale and its sources.
+ */
+const EXPECTED_TOOLS = [
+  'ask_user_question',
+  'bash',
+  'create_goal',
+  'edit',
+  'exit_plan_mode',
+  'get_goal',
+  'interrupt_agent',
+  'job_kill',
+  'job_list',
+  'job_output',
+  'list_agents',
+  'ralph',
+  'read',
+  'read_image',
+  'send_message',
+  'skill',
+  'subagent',
+  'subagent_fork',
+  'todo_write',
+  'update_goal',
+  'web_search',
+  'workflow',
+  'write',
+]
+
+/**
+ * `glob` and `grep` come from `dsh-tool-fs-search`, which spawns the PACKAGED
+ * ripgrep binary (`@vscode/ripgrep`) through the subprocess seam, so the pair
+ * is always present on every host — asserted as fixed members, not a host
+ * dependency.
+ */
+const RIPGREP_TOOLS = ['glob', 'grep']
+
+let scaffold: WebScaffold | undefined
+
+afterEach(async () => {
+  await scaffold?.close()
+  scaffold = undefined
+})
+
+it('assembles the shipped Web catalog, file-reference guidance, retry policy, and confined access default', async () => {
+  scaffold = await launchWebScaffold({ deepSeekMissingCredential: true })
+  const ctx = scaffold.ctx
+  expect(ctx.llm.providerRetryPolicy('deepseek-official')).toMatchInlineSnapshot(`
+    {
+      "initialDelayMs": 500,
+      "jitterRatio": 0.1,
+      "maxDelayMs": 10000,
+      "maxRetries": 5,
+      "mode": "normal",
+      "retryableCodes": [
+        "EMPTY_RESPONSE",
+        "RATE_LIMIT",
+        "SERVER",
+        "TIMEOUT",
+        "TRANSPORT",
+      ],
+    }
+  `)
+  await ctx.settings.update(settingsNamespace('llm-deepseek'), {
+    retryPolicy: { mode: 'always', maxRetries: 5 },
+  })
+  expect(ctx.llm.providerRetryPolicy('deepseek-official')).toMatchInlineSnapshot(`
+    {
+      "initialDelayMs": 500,
+      "jitterRatio": 0.1,
+      "maxDelayMs": 10000,
+      "mode": "always",
+    }
+  `)
+  await ctx.settings.update(settingsNamespace('llm-pi-ai'), {
+    providers: {
+      openai: {},
+      anthropic: { retryPolicy: { mode: 'always' } },
+    },
+  })
+  expect(ctx.llm.providerRetryPolicy('openai')).toMatchInlineSnapshot(`
+    {
+      "initialDelayMs": 500,
+      "jitterRatio": 0.1,
+      "maxDelayMs": 10000,
+      "maxRetries": 5,
+      "mode": "normal",
+      "retryableCodes": [
+        "EMPTY_RESPONSE",
+        "RATE_LIMIT",
+        "SERVER",
+        "TIMEOUT",
+        "TRANSPORT",
+      ],
+    }
+  `)
+  expect(ctx.llm.providerRetryPolicy('anthropic')).toMatchInlineSnapshot(`
+    {
+      "initialDelayMs": 500,
+      "jitterRatio": 0.1,
+      "maxDelayMs": 10000,
+      "mode": "always",
+    }
+  `)
+  // The catalog belongs to an AGENT, not to the process: every model-facing row
+  // now lives in a preset mounted under one session's scope, so the global
+  // layer holds nothing and a caller must name the agent to see anything. This
+  // composes from the deployment default — what a session that names no preset
+  // gets — which is the shape this test has always been about.
+  expect(ctx.tools.schemas().map(schema => schema.name)).toEqual([])
+  const handle = await ctx.agents.create({
+    sessionId: SessionId('shipped-composition'),
+    setup: agentCtx => ctx.agentPresets.mount(agentCtx).then(() => undefined),
+  })
+  try {
+    const names = ctx.tools.schemas(handle.agent).map(schema => schema.name).sort()
+    expect(names.filter(name => !RIPGREP_TOOLS.includes(name))).toEqual(EXPECTED_TOOLS)
+    // The packaged ripgrep binary ships with the dependency, so the pair is a
+    // fixed roster member on every host.
+    expect(names.filter(name => RIPGREP_TOOLS.includes(name))).toEqual(RIPGREP_TOOLS)
+    const fileReferenceSection = (await ctx.systemPrompt.assemble({ scope: handle.agent })).sections
+      .find(section => section.name === 'ui:deliverable-file-references')
+    expect(fileReferenceSection?.text).toBe(readFileSync(FILE_REFERENCE_PROMPT, 'utf8').trimEnd())
+  } finally {
+    await handle.dispose()
+  }
+  // `workspace-write` is not "the workspace and nothing else": the shared roots
+  // helper always admits the temp directories too. Pinning it against an
+  // explicit mode keeps the claim independent of this surface's default, and
+  // keeps a future sandbox-confinement test from being run inside /tmp — where an
+  // "escape" write succeeds by design and reads as a sandbox failure.
+  expect(writableRoots(scaffold.ctx.sandboxPolicy.resolve({ mode: 'workspace-write' }))).toEqual(
+    expect.arrayContaining([canonicalPath('/tmp'), canonicalPath(tmpdir())]),
+  )
+  expect(scaffold.ctx.sandboxPolicy.defaultMode).toBe('workspace-write')
+  expect(scaffold.ctx.approval.config.policy).toBe('ask')
+  expect(scaffold.ctx.permissionPresets.defaultPreset).toBe('workspace-write')
+
+  const commandHandle = await scaffold.ctx.agents.create({
+    sessionId: SessionId('shipped-command-catalog'),
+    meta: { cwd: scaffold.workspaceCwd },
+    agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+  })
+  try {
+    expect(scaffold.ctx.commands.list(commandHandle.agent)).toContainEqual({
+      name: 'feedback',
+      description: 'record feedback about this session',
+      input: { hint: '<text>' },
+    })
+  } finally {
+    await commandHandle.dispose()
+  }
+}, 120_000)
+
+it('forms a shipped P5 team whose controller, ledgers, gates, and market discovery compose together', async () => {
+  scaffold = await launchWebScaffold({ deepSeekMissingCredential: true })
+  const ctx = scaffold.ctx
+  const lead = await ctx.agents.create({
+    sessionId: SessionId('shipped-p3-formation'),
+    meta: { cwd: scaffold.workspaceCwd },
+    agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+    setup: agentCtx => ctx.agentPresets.mount(agentCtx).then(() => undefined),
+  })
+  try {
+    const formed = await ctx.teamOrchestrator.orchestrate(lead.agent, {
+      requestId: TeamOrchestrationRequestId('shipped-p3-simple'),
+      objective: 'Research and summarize this capability in three points',
+      domain: 'research_analysis',
+    }, new AbortController().signal)
+    expect(formed.run).toMatchObject({
+      complexity: 'simple',
+      phase: 'active',
+      plannedExperts: 3,
+      expertCounts: { active: 3, planned: 3 },
+      tasks: [
+        { id: 'task-1', status: 'pending', ready: true, blockedBy: [], owner: { role: 'expert' } },
+        { id: 'task-2', status: 'pending', ready: true, blockedBy: [], owner: { role: 'expert' } },
+        { id: 'task-3', status: 'pending', ready: false, blockedBy: ['task-1', 'task-2'], owner: { role: 'expert' } },
+        { id: 'task-4', status: 'pending', ready: false, blockedBy: ['task-3'], owner: { role: 'expert' } },
+      ],
+      protocol: {
+        mode: 'enforced',
+        topology: 'producer_reviewer',
+        limits: { maxChallengeRounds: 1 },
+        challenges: [],
+      },
+      artifacts: [],
+      decisions: [],
+      controller: { health: 'healthy', recommendedActions: [] },
+    })
+    expect(formed.run.protocol.members).toHaveLength(3)
+    expect(formed.run.protocol.members.every(member => member.phase === 'active' && member.usedMessages === 0)).toBe(true)
+    expect(formed.plan?.roster).toHaveLength(3)
+    expect(formed.plan?.stages?.map(stage => stage.mode)).toEqual(['parallel', 'serial', 'serial'])
+    expect(formed.plan?.roster.every(expert => expert.skillDiscovery?.providers.length === 3)).toBe(true)
+    expect(formed.run.qualityGates.length).toBeGreaterThan(0)
+    expect(formed.run.qualityGates.map(gate => gate.name)).toEqual(formed.charter?.qualityChecks)
+    expect(formed.run.qualityGates.every(gate => gate.status === 'pending')).toBe(true)
+    expect(ctx.tools.schemas(lead.agent).map(schema => schema.name)).toEqual(expect.arrayContaining([
+      'collaboration_artifact_read',
+      'collaboration_artifact_write',
+      'collaboration_complete',
+      'collaboration_control',
+      'collaboration_controller_get',
+      'collaboration_decision_write',
+      'collaboration_quality_update',
+    ]))
+    const childId = formed.run.members[0]?.sessionId
+    expect(childId).toBeDefined()
+    const storedChild = childId === undefined ? undefined : await ctx.sessionPersistence.inspect(childId)
+    expect(storedChild?.events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'collaboration/expert/descriptor' }),
+      expect.objectContaining({ type: 'user/message' }),
+    ]))
+  } finally {
+    await lead.dispose()
+  }
+}, 120_000)
+
+it('enforces reviewed skill floors and serial-stage changes in the shipped composition', async () => {
+  scaffold = await launchWebScaffold({ deepSeekMissingCredential: true })
+  const ctx = scaffold.ctx
+  const lead = await ctx.agents.create({
+    sessionId: SessionId('shipped-reviewed-plan'),
+    meta: { cwd: scaffold.workspaceCwd },
+    agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+    setup: agentCtx => ctx.agentPresets.mount(agentCtx).then(() => undefined),
+  })
+  try {
+    const planned = await ctx.teamOrchestrator.create(lead.agent, {
+      requestId: TeamOrchestrationRequestId('shipped-reviewed-plan'),
+      objective: [
+        '请分析英伟达以超 130 亿美元收购 Hugging Face 的战略利弊并给出综合判断',
+        '',
+        '协作方案调整要求：',
+        '每个专家挂载3个技能',
+        '协作方案调整要求：',
+        '每个专家agent挂载3个技能',
+        '阶段1两个任务变成串行任务',
+        '将技术分析专家的技能修改为 collaboration-research-analysis、collaboration-peer-review、collaboration-software-development',
+      ].join('\n'),
+    })
+
+    expect(planned.run.phase).toBe('planning')
+    expect(planned.profile.objective.match(/协作方案调整要求/gu)).toHaveLength(1)
+    expect(planned.plan?.stages?.map(stage => stage.mode)).toEqual([
+      'serial', 'serial', 'serial', 'serial',
+    ])
+    expect(planned.plan?.roster.find(expert => expert.role === '技术分析专家')?.localSkills).toEqual([
+      'collaboration-research-analysis',
+      'collaboration-peer-review',
+      'collaboration-software-development',
+    ])
+    for (const expert of planned.plan?.roster ?? []) {
+      const localSkills = ctx.expertCatalog.get(expert.blueprint).skills
+      const readyMarketSkills = (expert.skillDiscovery?.mounts ?? []).filter(capability =>
+        capability.status === 'loaded' || capability.status === 'connected')
+      expect(new Set([...localSkills, ...readyMarketSkills.map(capability => capability.id)]).size).toBeGreaterThanOrEqual(3)
+    }
+    expect(planned.charter?.taskDag.every(task => !task.description.includes('协作方案调整要求'))).toBe(true)
+  } finally {
+    await lead.dispose()
+  }
+}, 120_000)
+
+it('lets a preset producer reach the background-job registry', async () => {
+  scaffold = await launchWebScaffold()
+  const ctx = scaffold.ctx
+  const handle = await ctx.agents.create({
+    sessionId: SessionId('shipped-background-job'),
+    meta: { cwd: scaffold.workspaceCwd },
+    setup: agentCtx => ctx.agentPresets.mount(agentCtx).then(() => undefined),
+  })
+  try {
+    const signal = new AbortController().signal
+    // `tool-bash` is a preset row and `tasks` is a host registry; the producer
+    // resolves it with `ctx.get`, so a registry hidden behind a preset realm
+    // fails here — with every task control still listed in the catalog above.
+    const started = await ctx.tools.execute({
+      signal,
+      callId: CallId('shipped-bash-background'),
+      name: 'bash',
+      arguments: {
+        command: 'printf SHIPPED_BACKGROUND_OK',
+        description: 'shipped background probe',
+        run_in_background: true,
+      },
+      agent: handle.agent,
+    })
+    expect({ isError: started.isError, content: started.content }).toEqual({
+      isError: false,
+      content: [{ type: 'text', text: 'started background job bash-1' }],
+    })
+
+    // The controller reads what the producer started: same registry, one
+    // owner. A per-preset registry would list nothing here even on success.
+    const listed = await ctx.tools.execute({
+      signal,
+      callId: CallId('shipped-task-list'),
+      name: 'job_list',
+      arguments: {},
+      agent: handle.agent,
+    })
+    expect(listed.isError).toBe(false)
+    expect(listed.content).toEqual([
+      { type: 'text', text: expect.stringContaining('bash-1 [bash]') as unknown as string },
+    ])
+
+    // The full round trip: the output a host-plane producer wrote is collected
+    // through a preset-plane control, which is the linkage the realm severed.
+    const collected = await ctx.tools.execute({
+      signal,
+      callId: CallId('shipped-task-output'),
+      name: 'job_output',
+      arguments: { job_id: 'bash-1', wait: true },
+      agent: handle.agent,
+    })
+    expect(collected.isError).toBe(false)
+    expect(collected.content).toEqual([
+      { type: 'text', text: expect.stringContaining('SHIPPED_BACKGROUND_OK') as unknown as string },
+    ])
+  } finally {
+    await handle.dispose()
+  }
+}, 120_000)

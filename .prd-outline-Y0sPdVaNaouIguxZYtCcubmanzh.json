@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "identity": "user",
+  "data": {
+    "document": {
+      "content": "<fragment mode=\"outline\"><outline><h1 id=\"doxcnhZXRgCpFL849dCp52JanKb\">1. 先纠正一个关键心智</h1><h1 id=\"doxcnlAqaiJxRChttds6OWeIdod\">2. 总体设计原则</h1><h1 id=\"doxcnrxV9vFExkU8vFKWdXlt3I7\">3. 【先读】三种行为母版：先判断用户正在做什么</h1><h2 id=\"doxcnq7kPvxqqprjTpty7IjoBqf\">3.1 浏览型容器：从集合中找到并选择对象</h2><h2 id=\"doxcnOGPtTDp6TiXh0LkUiN3M0c\">3.2 工作型容器：在主工作区里持续操作</h2><h2 id=\"doxcnXe0f8SznqDyKpyoD53fbYc\">3.3 提交型容器：填写参数并做一次明确决策</h2><h1 id=\"doxcnR9q6iEGGDODP4o9OzOBQpe\">4. 七种具体界面模板：在母版判断后选择</h1><h2 id=\"doxcnHm4i4Pi1Ii6LKJV5KcdmNh\">4.0 先看懂：Plugin、母版、模板是三个层级</h2><h2 id=\"doxcnzfSeHd0dyHxWnb58XmVL1b\">4.0.1 七种模板与三种母版的交叉关系</h2><h2 id=\"doxcncDFZHghjxa88zaJYyD3aCf\">4.1 Object Browser：对象浏览容器</h2><h2 id=\"doxcnuzbdurTwuVZXoZiFZqZKGg\">4.2 Canvas Workspace：画布工作区容器</h2><h2 id=\"doxcn4zXXTicug2ObBy7BHFHd5g\">4.3 Form Flow：表单流程容器</h2><h2 id=\"doxcnyO2oWNwzNrrglViVXQKAtf\">4.4 Preview Workspace：预览工作区容器</h2><h2 id=\"doxcnO13HOs71mDgGUMCkiPjTSe\">4.5 Task Monitor：任务监控容器</h2><h2 id=\"doxcnPHp0BIFzqGgRPuHC8t4aqe\">4.6 Object Inspector：对象详情容器</h2><h2 id=\"doxcn52JcNpbreegFWh5NEQ5nPh\">4.7 Command Picker：技能选择容器</h2><h1 id=\"doxcnCcN98wU8rTMkUTrE49E5yg\">5. 功能按钮归置规则</h1><h1 id=\"doxcnOY6VkHDdaeR9sVolf7a4Ec\">6. 落到当前右侧 Plugin 工具栏形态</h1><h1 id=\"doxcn0MJBq8o5sljbvvo0ouR3td\">7. 设计评审 Checklist</h1><h1 id=\"doxcnxOPQnwGmebweXyo0oLwYhG\">8. 最后一句话</h1></outline></fragment>",
+      "document_id": "Y0sPdVaNaouIguxZYtCcubmanzh",
+      "revision_id": 326
+    }
+  }
+}

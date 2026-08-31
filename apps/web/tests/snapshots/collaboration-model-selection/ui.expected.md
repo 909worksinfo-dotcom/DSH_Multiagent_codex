@@ -1,0 +1,153 @@
+- main:
+  - img
+  - text: 协作方案预览
+  - heading "分析企业知识管理中的 AI 智能体机会，并由多位专家交叉验证后给出建议" [level=1]
+  - button "返回日常会话":
+    - img
+    - text: 返回日常会话
+  - text: 协作方案预览
+  - heading "请确认任务清单与专家团队" [level=1]
+  - paragraph: 当前尚未开始执行，确认后才会创建专家会话并由主协调智能体推进任务
+  - heading "任务目标" [level=2]
+  - paragraph: 分析企业知识管理中的 AI 智能体机会，并由多位专家交叉验证后给出建议
+  - region "任务清单":
+    - text: "01"
+    - heading "任务清单" [level=2]
+    - text: 共 4 项
+    - strong: 阶段 1
+    - text: 并行阶段
+    - list:
+      - listitem:
+        - text: "01"
+        - strong: 核验事实与证据
+        - paragraph: 核验任务前提、关键事实、来源时效与不确定性：分析企业知识管理中的 AI 智能体机会，并由多位专家交叉验证后给出建议
+        - text: 执行 Agent： 综合评审专家
+      - listitem:
+        - text: "02"
+        - strong: 开展多维分析
+        - paragraph: 从任务相关的市场、产品、技术与利益相关方维度形成结构化分析：分析企业知识管理中的 AI 智能体机会，并由多位专家交叉验证后给出建议
+        - text: 执行 Agent： 市场分析专家
+    - strong: 阶段 2
+    - text: 串行阶段
+    - list:
+      - listitem:
+        - text: "03"
+        - strong: 交叉质疑与风险复核
+        - paragraph: 交叉检查证据与分析，指出矛盾、反例、风险边界和仍待确认的问题
+        - text: 执行 Agent： 证据研究专家
+    - strong: 阶段 3
+    - text: 串行阶段
+    - list:
+      - listitem:
+        - text: "04"
+        - strong: 综合判断与交付
+        - paragraph: 吸收交叉评审结论，形成完整、可追溯且明确不确定性的最终判断
+        - text: 执行 Agent： 综合评审专家
+  - region "协作专家":
+    - text: "02"
+    - heading "协作专家" [level=2]
+    - text: 共 3 名专家
+    - article:
+      - text: Lead
+      - strong: 主协调智能体
+      - paragraph: 负责规划、协调、裁决和最终交付
+      - combobox "为主协调智能体选择模型"
+    - article:
+      - text: "01"
+      - heading "综合评审专家" [level=3]
+      - paragraph: 综合评审专家
+      - term: 智能体预置
+      - definition: standard
+      - term: 模型配置
+      - definition:
+        - combobox "为综合评审专家选择模型"
+      - term: 工具基建
+      - definition: 完整日常工具集
+      - term: 权限机制
+      - definition: 跟随主协调智能体 · 按需审批
+      - term: 已挂载技能
+      - definition:
+        - text: 深度研究与证据分析
+        - button "从综合评审专家删除技能“深度研究与证据分析”":
+          - img
+        - text: 协作质疑与同行评审
+        - button "从综合评审专家删除技能“协作质疑与同行评审”":
+          - img
+        - text: 产品方案设计
+        - button "从综合评审专家删除技能“产品方案设计”":
+          - img
+        - button "添加技能":
+          - img
+          - text: 添加技能
+      - term: 可用插件
+      - definition: "@deepseek-ai/dsh-tool-web"
+    - article:
+      - text: "02"
+      - heading "证据研究专家" [level=3]
+      - paragraph: 证据研究专家
+      - term: 智能体预置
+      - definition: standard
+      - term: 模型配置
+      - definition:
+        - combobox "为证据研究专家选择模型"
+      - term: 工具基建
+      - definition: 完整日常工具集
+      - term: 权限机制
+      - definition: 跟随主协调智能体 · 按需审批
+      - term: 已挂载技能
+      - definition:
+        - text: 深度研究与证据分析
+        - button "从证据研究专家删除技能“深度研究与证据分析”":
+          - img
+        - text: 协作质疑与同行评审
+        - button "从证据研究专家删除技能“协作质疑与同行评审”":
+          - img
+        - text: 产品方案设计
+        - button "从证据研究专家删除技能“产品方案设计”":
+          - img
+        - button "添加技能":
+          - img
+          - text: 添加技能
+      - term: 可用插件
+      - definition: "@deepseek-ai/dsh-tool-web"
+    - article:
+      - text: "03"
+      - heading "市场分析专家" [level=3]
+      - paragraph: 市场分析专家
+      - term: 智能体预置
+      - definition: standard
+      - term: 模型配置
+      - definition:
+        - combobox "为市场分析专家选择模型"
+      - term: 工具基建
+      - definition: 完整日常工具集
+      - term: 权限机制
+      - definition: 跟随主协调智能体 · 按需审批
+      - term: 已挂载技能
+      - definition:
+        - text: 深度研究与证据分析
+        - button "从市场分析专家删除技能“深度研究与证据分析”":
+          - img
+        - text: 协作质疑与同行评审
+        - button "从市场分析专家删除技能“协作质疑与同行评审”":
+          - img
+        - text: 产品方案设计
+        - button "从市场分析专家删除技能“产品方案设计”":
+          - img
+        - button "添加技能":
+          - img
+          - text: 添加技能
+      - term: 可用插件
+      - definition: "@deepseek-ai/dsh-tool-web"
+    - strong: 专家技能配置已与当前方案一致
+    - paragraph: 删除或添加后需要应用修改；每名专家至少保留 2 个技能
+    - button "应用技能修改" [disabled]
+    - strong: 全部智能体的模型配置已与当前方案一致
+    - paragraph: 主协调智能体和每名专家均可独立选择 Provider、模型和思考强度，应用后写入新的协作方案
+    - button "应用模型修改" [disabled]
+  - text: 需要调整？直接提出修改要求
+  - textbox "需要调整？直接提出修改要求":
+    - /placeholder: 例如：增加政策与监管专家，将技术评审改为并行任务，补充数据来源验收标准
+  - button "按要求重新生成" [disabled]
+  - button "返回修改任务目标"
+  - button "确认方案并开始执行"
